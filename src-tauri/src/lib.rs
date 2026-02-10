@@ -39,6 +39,7 @@ pub fn run() {
             commands::search_llm,
             commands::rename_speaker,
             commands::export_session,
+            commands::update_session_title,
             commands::get_api_key,
             commands::set_api_key,
         ])

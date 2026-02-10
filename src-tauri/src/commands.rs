@@ -495,12 +495,65 @@ pub async fn rename_speaker(
 
 #[tauri::command]
 pub async fn export_session(
-    _session_id: String,
-    _format: String,
-    _state: State<'_, AppState>,
+    session_id: String,
+    format: String,
+    state: State<'_, AppState>,
 ) -> Result<String, String> {
-    // Will be implemented in Task 18
-    Err("Export not yet implemented".to_string())
+    match format.as_str() {
+        "markdown" => {
+            // Load session detail from DB
+            let (session, segments, summary) = {
+                let db = state.db.lock().map_err(|e| e.to_string())?;
+                let session = db.get_session(&session_id).map_err(|e| e.to_string())?;
+                let segments = db.get_segments(&session_id).map_err(|e| e.to_string())?;
+                let summary: Option<Summary> = session
+                    .summary_json
+                    .as_ref()
+                    .and_then(|json| serde_json::from_str(json).ok());
+                (session, segments, summary)
+            };
+
+            // Generate markdown content
+            let md = crate::export::export_markdown(
+                &session.title,
+                &session.created_at,
+                session.duration_secs,
+                &segments,
+                &summary,
+            );
+
+            // Save to file in Documents/poptranscribe/exports/
+            let export_dir = dirs::document_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("poptranscribe")
+                .join("exports");
+
+            // Sanitize title for filename
+            let safe_title: String = session
+                .title
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+                .collect();
+            let filename = format!("{}_{}.md", safe_title, session_id.split('-').next().unwrap_or("export"));
+            let file_path = export_dir.join(&filename);
+
+            crate::export::export_to_file(&md, &file_path)
+                .map_err(|e| format!("Erreur ecriture fichier: {}", e))?;
+
+            Ok(file_path.to_string_lossy().to_string())
+        }
+        other => Err(format!("Export {} pas encore supporte", other)),
+    }
+}
+
+#[tauri::command]
+pub async fn update_session_title(
+    session_id: String,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.update_session_title(&session_id, &title).map_err(|e| e.to_string())
 }
 
 // ── Settings ─────────────────────────────────────────────────────────
