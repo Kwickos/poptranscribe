@@ -85,13 +85,13 @@ export default function ExportButtons({ sessionId }: ExportButtonsProps) {
   return (
     <>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500 mr-1">Exporter :</span>
+        <span className="text-xs text-gray-400 mr-1">Exporter :</span>
         {EXPORT_OPTIONS.map((opt) => (
           <button
             key={opt.format}
             onClick={() => handleExport(opt.format)}
             disabled={loadingFormat !== null}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-300 text-xs rounded-lg font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 text-gray-600 text-xs rounded-lg font-medium transition-colors"
           >
             {loadingFormat === opt.format ? (
               <svg
@@ -128,10 +128,10 @@ export default function ExportButtons({ sessionId }: ExportButtonsProps) {
           {toasts.map((toast) => (
             <div
               key={toast.id}
-              className={`px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg animate-[fadeIn_0.2s_ease-out] ${
+              className={`px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg ${
                 toast.type === 'success'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-red-600 text-white'
+                  ? 'bg-white border border-emerald-200 text-emerald-700'
+                  : 'bg-white border border-red-200 text-red-700'
               }`}
             >
               {toast.message}

@@ -3,14 +3,14 @@ import type { Segment } from '../types';
 import SpeakerEditor from './SpeakerEditor';
 
 const SPEAKER_COLORS = [
-  'text-blue-400',
-  'text-emerald-400',
-  'text-amber-400',
-  'text-pink-400',
-  'text-purple-400',
-  'text-cyan-400',
-  'text-rose-400',
-  'text-teal-400',
+  'text-gray-900',
+  'text-gray-600',
+  'text-blue-700',
+  'text-emerald-700',
+  'text-amber-700',
+  'text-violet-700',
+  'text-rose-700',
+  'text-teal-700',
 ];
 
 function getSpeakerColor(speaker: string, speakers: string[]): string {
@@ -53,7 +53,7 @@ export default function DiarizedTranscript({
 
   if (segments.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+      <div className="flex items-center justify-center h-full text-gray-400 text-sm">
         Aucun segment de transcription disponible.
       </div>
     );
@@ -71,9 +71,9 @@ export default function DiarizedTranscript({
         return (
           <div
             key={seg.id}
-            className="flex gap-3 py-1.5 px-2 rounded hover:bg-gray-800/50 transition-colors"
+            className="flex gap-3 py-1.5 px-2 rounded hover:bg-gray-50 transition-colors"
           >
-            <span className="text-gray-500 text-sm font-mono shrink-0 pt-0.5">
+            <span className="text-gray-400 text-sm font-mono shrink-0 pt-0.5">
               [{formatTimestamp(seg.start_time)}]
             </span>
             <div className="flex-1 text-sm leading-relaxed">
@@ -84,7 +84,7 @@ export default function DiarizedTranscript({
                       isEditing ? null : { name: speakerName, segmentId: seg.id }
                     )
                   }
-                  className={`${color} font-semibold hover:underline cursor-pointer focus:outline-none`}
+                  className={`${color} font-medium hover:underline cursor-pointer focus:outline-none`}
                   title="Cliquez pour renommer ce locuteur"
                 >
                   {speakerName}
@@ -101,8 +101,8 @@ export default function DiarizedTranscript({
                   />
                 )}
               </span>
-              <span className="text-gray-400 mx-1">:</span>
-              <span className="text-gray-200">{seg.text}</span>
+              <span className="text-gray-300 mx-1">:</span>
+              <span className="text-gray-700">{seg.text}</span>
             </div>
           </div>
         );

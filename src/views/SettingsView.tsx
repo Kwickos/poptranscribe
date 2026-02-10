@@ -44,15 +44,15 @@ export default function SettingsView() {
   }, [apiKey]);
 
   /** Mask the key: show first 4 chars then dots */
-  const maskedValue = apiKey.length > 4 ? apiKey.slice(0, 4) + '•'.repeat(Math.min(apiKey.length - 4, 32)) : apiKey;
+  const maskedValue = apiKey.length > 4 ? apiKey.slice(0, 4) + '\u2022'.repeat(Math.min(apiKey.length - 4, 32)) : apiKey;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <h2 className="text-2xl font-bold text-white">Parametres</h2>
+      <h2 className="text-xl font-semibold text-gray-900">Parametres</h2>
 
       {/* API Key input */}
       <div className="space-y-2">
-        <label htmlFor="api-key" className="block text-sm text-gray-400">
+        <label htmlFor="api-key" className="block text-sm text-gray-500">
           Cle API Mistral
         </label>
 
@@ -87,12 +87,12 @@ export default function SettingsView() {
               }}
               onFocus={() => setShowKey(true)}
               placeholder="Entrez votre cle API Mistral..."
-              className="w-full px-3 py-2 pr-10 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+              className="w-full px-3 py-2 pr-10 bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-0"
             />
             <button
               type="button"
               onClick={() => setShowKey(!showKey)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors p-1"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1"
               title={showKey ? 'Masquer la cle' : 'Afficher la cle'}
             >
               {showKey ? (
@@ -126,7 +126,7 @@ export default function SettingsView() {
           </div>
         )}
 
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-400">
           Obtenez votre cle sur console.mistral.ai
         </p>
       </div>
@@ -135,7 +135,7 @@ export default function SettingsView() {
       <button
         onClick={handleSave}
         disabled={loading || saving}
-        className={`px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-sm transition-colors ${
+        className={`px-6 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-medium text-sm transition-colors ${
           loading || saving ? 'opacity-50 cursor-not-allowed' : ''
         }`}
       >
@@ -168,8 +168,8 @@ export default function SettingsView() {
         <div
           className={`px-4 py-2 rounded-lg text-sm ${
             feedback.type === 'success'
-              ? 'bg-green-900/50 text-green-300 border border-green-800'
-              : 'bg-red-900/50 text-red-300 border border-red-800'
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
           }`}
         >
           {feedback.message}

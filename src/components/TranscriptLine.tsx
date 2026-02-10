@@ -18,7 +18,7 @@ function highlightText(text: string, query: string): React.ReactNode {
 
   return parts.map((part, i) =>
     regex.test(part) ? (
-      <mark key={i} className="bg-yellow-400/80 text-gray-950 rounded-sm px-0.5">
+      <mark key={i} className="bg-amber-100 text-amber-900 rounded-sm px-0.5">
         {part}
       </mark>
     ) : (
@@ -29,11 +29,11 @@ function highlightText(text: string, query: string): React.ReactNode {
 
 export default function TranscriptLine({ text, startTime, highlight }: TranscriptLineProps) {
   return (
-    <div className="flex gap-3 py-1.5 px-2 rounded hover:bg-gray-800/50 transition-colors">
-      <span className="text-gray-500 text-sm font-mono shrink-0 pt-0.5">
+    <div className="flex gap-3 py-1.5 px-2 rounded hover:bg-gray-50 transition-colors">
+      <span className="text-gray-400 text-sm font-mono shrink-0 pt-0.5">
         [{formatTimestamp(startTime)}]
       </span>
-      <span className="text-gray-200 text-sm leading-relaxed">
+      <span className="text-gray-700 text-sm leading-relaxed">
         {highlight ? highlightText(text, highlight) : text}
       </span>
     </div>

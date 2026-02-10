@@ -49,7 +49,7 @@ export default function SearchBar({ onTextSearch, onLlmSearch, isSearching }: Se
     <div className="flex items-center gap-2">
       <div className="relative flex-1">
         <svg
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -67,13 +67,13 @@ export default function SearchBar({ onTextSearch, onLlmSearch, isSearching }: Se
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder="Rechercher... (prefixer avec ? pour une recherche IA)"
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+          className="w-full bg-white border border-gray-200 rounded-lg py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-0 transition-colors"
         />
       </div>
       <button
         onClick={handleLlmClick}
         disabled={isSearching || !value.trim()}
-        className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+        className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-300 text-gray-700 text-sm font-medium rounded-lg transition-colors shrink-0"
         title="Recherche IA"
       >
         {isSearching ? (

@@ -124,12 +124,12 @@ export default function DetailView() {
   if (error || !detail) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <p className="text-red-400 text-sm">
+        <p className="text-red-600 text-sm">
           {error ?? 'Session introuvable'}
         </p>
         <button
           onClick={() => navigate('/history')}
-          className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg transition-colors"
         >
           Retour a l'historique
         </button>
@@ -140,11 +140,11 @@ export default function DetailView() {
   return (
     <div className="flex flex-col h-full max-h-full">
       {/* Header */}
-      <header className="shrink-0 pb-4 border-b border-gray-800 mb-4">
+      <header className="shrink-0 pb-4 border-b border-gray-200 mb-4">
         <div className="flex items-start gap-3">
           <button
             onClick={() => navigate('/history')}
-            className="mt-1 p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="mt-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors"
             title="Retour a l'historique"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -167,46 +167,46 @@ export default function DetailView() {
                   }
                 }}
                 autoFocus
-                className="text-xl font-bold text-white bg-transparent border-b-2 border-indigo-500 outline-none w-full pb-0.5"
+                className="text-xl font-semibold text-gray-900 bg-transparent border-b-2 border-gray-400 outline-none w-full pb-0.5"
               />
             ) : (
               <h2
                 onClick={() => setEditingTitle(true)}
-                className="text-xl font-bold text-white cursor-pointer hover:text-indigo-400 transition-colors truncate"
+                className="text-xl font-semibold text-gray-900 cursor-pointer hover:text-gray-600 transition-colors truncate"
                 title="Cliquer pour modifier le titre"
               >
                 {detail.title}
               </h2>
             )}
 
-            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+            <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
               <span>{formatDate(detail.created_at)}</span>
-              <span className="w-1 h-1 rounded-full bg-gray-700" />
+              <span className="w-1 h-1 rounded-full bg-gray-300" />
               <span>{formatDuration(detail.duration_secs)}</span>
-              <span className="w-1 h-1 rounded-full bg-gray-700" />
+              <span className="w-1 h-1 rounded-full bg-gray-300" />
               <span className="capitalize">{detail.mode}</span>
             </div>
           </div>
         </div>
 
         {/* Tabs for mobile / narrow layout */}
-        <div className="flex gap-1 mt-4 lg:hidden">
+        <div className="flex gap-1 mt-4 bg-gray-100 rounded-lg p-0.5 lg:hidden">
           <button
             onClick={() => setActiveTab('transcript')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               activeTab === 'transcript'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:text-white'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Transcription
           </button>
           <button
             onClick={() => setActiveTab('summary')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               activeTab === 'summary'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:text-white'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             Resume
@@ -218,13 +218,13 @@ export default function DetailView() {
       <div className="flex-1 min-h-0 flex gap-4">
         {/* Transcript column */}
         <div
-          className={`flex-1 min-w-0 border border-gray-800 rounded-lg overflow-auto ${
+          className={`flex-1 min-w-0 bg-white border border-gray-200 rounded-xl overflow-auto ${
             activeTab !== 'transcript' ? 'hidden lg:block' : ''
           }`}
         >
-          <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800 px-4 py-2.5">
-            <h3 className="text-sm font-semibold text-white">Transcription</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
+          <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-2.5">
+            <h3 className="text-sm font-medium text-gray-900">Transcription</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
               {detail.segments.length} segment{detail.segments.length !== 1 ? 's' : ''}
             </p>
           </div>
@@ -239,19 +239,19 @@ export default function DetailView() {
 
         {/* Summary sidebar */}
         <div
-          className={`lg:w-80 lg:shrink-0 border border-gray-800 rounded-lg overflow-auto ${
+          className={`lg:w-80 lg:shrink-0 bg-white border border-gray-200 rounded-xl overflow-auto ${
             activeTab !== 'summary' ? 'hidden lg:block' : 'flex-1'
           }`}
         >
-          <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm border-b border-gray-800 px-4 py-2.5">
-            <h3 className="text-sm font-semibold text-white">Resume</h3>
+          <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-gray-200 px-4 py-2.5">
+            <h3 className="text-sm font-medium text-gray-900">Resume</h3>
           </div>
           <SummaryPanel summary={detail.summary} />
         </div>
       </div>
 
       {/* Bottom bar: export buttons */}
-      <footer className="shrink-0 pt-4 mt-4 border-t border-gray-800">
+      <footer className="shrink-0 pt-4 mt-4 border-t border-gray-200">
         <ExportButtons sessionId={detail.id} />
       </footer>
     </div>

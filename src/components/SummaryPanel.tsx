@@ -38,7 +38,7 @@ export default function SummaryPanel({ summary, loading }: SummaryPanelProps) {
 
   if (!summary) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-500 text-sm p-4">
+      <div className="flex items-center justify-center h-full text-gray-400 text-sm p-4">
         Pas de resume disponible
       </div>
     );
@@ -48,56 +48,56 @@ export default function SummaryPanel({ summary, loading }: SummaryPanelProps) {
     <div className="space-y-6 p-4 overflow-auto">
       {/* Points cles */}
       <section>
-        <h3 className="text-sm font-semibold text-white mb-2 uppercase tracking-wide">
+        <h3 className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
           Points cles
         </h3>
         {summary.key_points.length > 0 ? (
           <ul className="space-y-1.5">
             {summary.key_points.map((point, i) => (
-              <li key={i} className="flex gap-2 text-sm text-gray-300">
-                <span className="text-indigo-400 shrink-0">&#8226;</span>
+              <li key={i} className="flex gap-2 text-sm text-gray-700">
+                <span className="text-gray-400 shrink-0">&#8226;</span>
                 <span>{point}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-gray-500 italic">Aucun point cle identifie</p>
+          <p className="text-sm text-gray-400 italic">Aucun point cle identifie</p>
         )}
       </section>
 
       {/* Decisions */}
       <section>
-        <h3 className="text-sm font-semibold text-white mb-2 uppercase tracking-wide">
+        <h3 className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
           Decisions
         </h3>
         {summary.decisions.length > 0 ? (
           <ul className="space-y-1.5">
             {summary.decisions.map((decision, i) => (
-              <li key={i} className="flex gap-2 text-sm text-gray-300">
-                <span className="text-emerald-400 shrink-0">&#8226;</span>
+              <li key={i} className="flex gap-2 text-sm text-gray-700">
+                <span className="text-gray-400 shrink-0">&#8226;</span>
                 <span>{decision}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-gray-500 italic">Aucune decision identifiee</p>
+          <p className="text-sm text-gray-400 italic">Aucune decision identifiee</p>
         )}
       </section>
 
       {/* Actions a suivre */}
       <section>
-        <h3 className="text-sm font-semibold text-white mb-2 uppercase tracking-wide">
+        <h3 className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wider">
           Actions a suivre
         </h3>
         {summary.action_items.length > 0 ? (
           <ul className="space-y-1.5">
             {summary.action_items.map((item, i) => (
-              <li key={i} className="flex gap-2 text-sm text-gray-300">
-                <span className="text-amber-400 shrink-0">&#8226;</span>
+              <li key={i} className="flex gap-2 text-sm text-gray-700">
+                <span className="text-gray-400 shrink-0">&#8226;</span>
                 <span>
                   {item.description}
                   {item.assignee && (
-                    <span className="ml-1.5 text-xs bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">
+                    <span className="ml-1.5 text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                       {item.assignee}
                     </span>
                   )}
@@ -106,7 +106,7 @@ export default function SummaryPanel({ summary, loading }: SummaryPanelProps) {
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-gray-500 italic">Aucune action identifiee</p>
+          <p className="text-sm text-gray-400 italic">Aucune action identifiee</p>
         )}
       </section>
     </div>

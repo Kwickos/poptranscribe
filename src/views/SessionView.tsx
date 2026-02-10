@@ -139,26 +139,26 @@ export default function SessionView() {
     <div className="flex flex-col h-full">
       {/* Notification banners */}
       {error && (
-        <div className="mb-2 px-4 py-2 bg-red-900/80 border border-red-700 text-red-200 rounded-lg text-sm flex items-center justify-between">
+        <div className="mb-2 px-4 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="ml-4 text-red-400 hover:text-red-200">&times;</button>
+          <button onClick={() => setError(null)} className="ml-4 text-red-400 hover:text-red-600">&times;</button>
         </div>
       )}
       {postProcessResult && (
         <div className={`mb-2 px-4 py-2 rounded-lg text-sm flex items-center justify-between ${
           postProcessResult.type === 'success'
-            ? 'bg-green-900/80 border border-green-700 text-green-200'
-            : 'bg-red-900/80 border border-red-700 text-red-200'
+            ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+            : 'bg-red-50 border border-red-200 text-red-700'
         }`}>
           <span>{postProcessResult.message}</span>
           <button onClick={() => setPostProcessResult(null)} className={`ml-4 ${
-            postProcessResult.type === 'success' ? 'text-green-400 hover:text-green-200' : 'text-red-400 hover:text-red-200'
+            postProcessResult.type === 'success' ? 'text-emerald-400 hover:text-emerald-600' : 'text-red-400 hover:text-red-600'
           }`}>&times;</button>
         </div>
       )}
       {postProcessing && (
-        <div className="mb-2 px-4 py-2 bg-blue-900/80 border border-blue-700 text-blue-200 rounded-lg text-sm flex items-center gap-2">
-          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+        <div className="mb-2 px-4 py-2 bg-gray-50 border border-gray-200 text-gray-600 rounded-lg text-sm flex items-center gap-2">
+          <svg className="w-4 h-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
@@ -170,16 +170,16 @@ export default function SessionView() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="flex flex-wrap items-center gap-4 pb-4 border-b border-gray-800">
+        <div className="flex flex-wrap items-center gap-4 pb-4 border-b border-gray-200">
           {/* Mode toggle */}
-          <div className="flex bg-gray-800 rounded-lg p-0.5">
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
             <button
               onClick={() => setMode('visio')}
               disabled={isRecording}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 mode === 'visio'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
               } ${isRecording ? 'cursor-not-allowed' : ''}`}
             >
               Visio
@@ -189,8 +189,8 @@ export default function SessionView() {
               disabled={isRecording}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 mode === 'presentiel'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
               } ${isRecording ? 'cursor-not-allowed' : ''}`}
             >
               Presentiel
@@ -201,7 +201,7 @@ export default function SessionView() {
           {!isRecording ? (
             <button
               onClick={handleStart}
-              className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors shadow-sm"
+              className="flex items-center gap-2 px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-medium transition-colors"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="8" />
@@ -211,7 +211,7 @@ export default function SessionView() {
           ) : (
             <button
               onClick={handleStop}
-              className="flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium transition-colors shadow-sm"
+              className="flex items-center gap-2 px-5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg font-medium transition-colors"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <rect x="6" y="6" width="12" height="12" rx="2" />
@@ -221,7 +221,7 @@ export default function SessionView() {
           )}
 
           {/* Timer */}
-          <div className="font-mono text-lg text-gray-300 tabular-nums">
+          <div className="font-mono text-lg text-gray-400 tabular-nums">
             {formatElapsedTime(elapsedTime)}
           </div>
 
@@ -241,11 +241,11 @@ export default function SessionView() {
         {/* Transcript area */}
         <div
           ref={transcriptContainerRef}
-          className="flex-1 overflow-auto border border-gray-800 rounded-lg p-3 min-h-0"
+          className="flex-1 overflow-auto bg-white border border-gray-200 rounded-xl p-4 min-h-0"
         >
           {filteredSegments.length === 0 ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-gray-500 text-sm">
+              <p className="text-gray-400 text-sm">
                 {isRecording
                   ? 'En attente de la transcription...'
                   : segments.length === 0
@@ -271,12 +271,12 @@ export default function SessionView() {
 
       {/* LLM results side panel */}
       {showLlmPanel && (
-        <div className="w-80 border-l border-gray-800 ml-4 pl-4 flex flex-col min-h-0">
-          <div className="flex items-center justify-between pb-3 border-b border-gray-800">
-            <h3 className="text-sm font-semibold text-gray-300">Resultat IA</h3>
+        <div className="w-80 bg-white border-l border-gray-200 ml-0 pl-4 pr-4 flex flex-col min-h-0">
+          <div className="flex items-center justify-between py-3 border-b border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900">Resultat IA</h3>
             <button
               onClick={() => setShowLlmPanel(false)}
-              className="text-gray-500 hover:text-gray-300 transition-colors"
+              className="text-gray-400 hover:text-gray-600 transition-colors"
               title="Fermer"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -310,7 +310,7 @@ export default function SessionView() {
                 Recherche en cours...
               </div>
             ) : llmResult ? (
-              <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
                 {llmResult}
               </p>
             ) : null}
