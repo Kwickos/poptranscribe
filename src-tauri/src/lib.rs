@@ -8,9 +8,9 @@ pub mod app_state;
 use app_state::AppState;
 use db::Database;
 use tauri::{
-    menu::{MenuBuilder, MenuItemBuilder},
+    menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Emitter, Manager, WindowEvent,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -45,14 +45,67 @@ pub fn run() {
             commands::rename_speaker,
             commands::export_session,
             commands::update_session_title,
+            commands::delete_session,
             commands::get_api_key,
             commands::set_api_key,
         ])
         .setup(|app| {
-            // Build the tray context menu
+            // --- macOS application menu bar ---
+            let about = PredefinedMenuItem::about(app, Some("A propos de PopTranscribe"), Some(
+                AboutMetadataBuilder::new()
+                    .name(Some("PopTranscribe"))
+                    .version(Some("0.1.0"))
+                    .build()
+            ))?;
+            let settings_item = MenuItemBuilder::with_id("settings", "Parametres...")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let hide = PredefinedMenuItem::hide(app, Some("Masquer PopTranscribe"))?;
+            let hide_others = PredefinedMenuItem::hide_others(app, Some("Masquer les autres"))?;
+            let show_all = PredefinedMenuItem::show_all(app, Some("Tout afficher"))?;
+            let quit_menu = PredefinedMenuItem::quit(app, Some("Quitter PopTranscribe"))?;
+
+            let app_submenu = SubmenuBuilder::new(app, "PopTranscribe")
+                .item(&about)
+                .separator()
+                .item(&settings_item)
+                .item(&separator)
+                .item(&hide)
+                .item(&hide_others)
+                .item(&show_all)
+                .separator()
+                .item(&quit_menu)
+                .build()?;
+
+            let edit_submenu = SubmenuBuilder::new(app, "Edition")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let app_menu = MenuBuilder::new(app)
+                .item(&app_submenu)
+                .item(&edit_submenu)
+                .build()?;
+
+            app.set_menu(app_menu)?;
+
+            // Handle menu events (settings)
+            app.on_menu_event(move |app_handle, event| {
+                if event.id().as_ref() == "settings" {
+                    let _ = app_handle.emit("open-settings", ());
+                }
+            });
+
+            // --- System tray ---
             let open_item = MenuItemBuilder::with_id("open", "Ouvrir PopTranscribe").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quitter").build(app)?;
-            let menu = MenuBuilder::new(app)
+            let tray_menu = MenuBuilder::new(app)
                 .items(&[&open_item])
                 .separator()
                 .items(&[&quit_item])
@@ -61,7 +114,7 @@ pub fn run() {
             // Create the system tray icon
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
+                .menu(&tray_menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "open" => {
                         if let Some(window) = app.get_webview_window("main") {

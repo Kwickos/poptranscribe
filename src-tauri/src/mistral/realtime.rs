@@ -37,12 +37,12 @@ pub async fn transcribe_stream(
     let mut form = reqwest::multipart::Form::new()
         .text("model", "voxtral-mini-latest")
         .text("stream", "true")
-        .text("timestamp_granularities", "[\"segment\"]")
+        .text("timestamp_granularities", "segment")
         .part("file", file_part);
 
-    if let Some(lang) = language {
-        form = form.text("language", lang.to_string());
-    }
+    // Note: language param is incompatible with timestamp_granularities per Mistral docs.
+    // The API auto-detects language, so we omit it.
+    let _ = language; // keep parameter for API compat
 
     let response = client
         .post("https://api.mistral.ai/v1/audio/transcriptions")

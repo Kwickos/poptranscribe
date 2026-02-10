@@ -69,8 +69,8 @@ pub async fn start_session(
     tokio::spawn(async move {
         let mut accumulated = Vec::<i16>::new();
         let sample_rate = actual_sample_rate;
-        // Transcribe every ~30 seconds of audio
-        let chunk_interval = sample_rate as usize * 30;
+        // Transcribe every ~10 seconds of audio for near-realtime feedback
+        let chunk_interval = sample_rate as usize * 10;
         let mut chunk_counter = 0u32;
         // Track cumulative time offset for segment timestamps
         let mut time_offset: f64 = 0.0;
@@ -144,37 +144,42 @@ pub async fn start_session(
 
                         // Process streaming events as they arrive
                         while let Some(event) = rx.recv().await {
-                            if let crate::mistral::realtime::TranscriptionEvent::Segment {
-                                text,
-                                start,
-                                end,
-                            } = event
-                            {
-                                let abs_start = current_offset + start;
-                                let abs_end = current_offset + end;
+                            match event {
+                                crate::mistral::realtime::TranscriptionEvent::TextDelta { text } => {
+                                    let _ = app.emit("transcription-delta", &text);
+                                }
+                                crate::mistral::realtime::TranscriptionEvent::Segment {
+                                    text,
+                                    start,
+                                    end,
+                                } => {
+                                    let abs_start = current_offset + start;
+                                    let abs_end = current_offset + end;
 
-                                // Save live segment to DB for search
-                                let segment_id = {
-                                    if let Ok(db) = db.lock() {
-                                        db.save_segment(
-                                            &sid, &text, abs_start, abs_end, None, false,
-                                        )
-                                        .ok()
-                                    } else {
-                                        None
-                                    }
-                                };
+                                    // Save live segment to DB for search
+                                    let segment_id = {
+                                        if let Ok(db) = db.lock() {
+                                            db.save_segment(
+                                                &sid, &text, abs_start, abs_end, None, false,
+                                            )
+                                            .ok()
+                                        } else {
+                                            None
+                                        }
+                                    };
 
-                                let segment = serde_json::json!({
-                                    "id": segment_id.unwrap_or(0),
-                                    "session_id": sid,
-                                    "text": text,
-                                    "start_time": abs_start,
-                                    "end_time": abs_end,
-                                    "speaker": null,
-                                    "is_diarized": false
-                                });
-                                let _ = app.emit("transcription-segment", segment);
+                                    let segment = serde_json::json!({
+                                        "id": segment_id.unwrap_or(0),
+                                        "session_id": sid,
+                                        "text": text,
+                                        "start_time": abs_start,
+                                        "end_time": abs_end,
+                                        "speaker": null,
+                                        "is_diarized": false
+                                    });
+                                    let _ = app.emit("transcription-segment", segment);
+                                }
+                                _ => {}
                             }
                         }
                     });
@@ -347,7 +352,7 @@ pub async fn stop_session(
                             &seg.text,
                             seg.start,
                             seg.end,
-                            seg.speaker.as_deref(),
+                            seg.speaker_id.as_deref(),
                             true,
                         );
                     }
@@ -358,7 +363,7 @@ pub async fn stop_session(
                     .segments
                     .iter()
                     .map(|s| {
-                        if let Some(ref speaker) = s.speaker {
+                        if let Some(ref speaker) = s.speaker_id {
                             format!("{}: {}", speaker, s.text)
                         } else {
                             s.text.clone()
@@ -554,6 +559,15 @@ pub async fn update_session_title(
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.update_session_title(&session_id, &title).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_session(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.delete_session(&session_id).map_err(|e| e.to_string())
 }
 
 // ── Settings ─────────────────────────────────────────────────────────

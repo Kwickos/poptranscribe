@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "poptranscribe-app",
-        "width": 800,
-        "height": 600
+        "title": "PopTranscribe",
+        "width": 1100,
+        "height": 720,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

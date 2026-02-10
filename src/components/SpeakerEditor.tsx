@@ -52,8 +52,8 @@ export default function SpeakerEditor({
   }
 
   return (
-    <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg p-3 min-w-[240px]">
-      <label className="block text-xs text-gray-500 mb-1.5">
+    <div className="absolute z-50 top-full left-0 mt-2 bg-white border border-gray-100 rounded-2xl shadow-lg p-4 min-w-[260px]">
+      <label className="block text-xs font-medium text-gray-500 mb-2">
         Renommer le locuteur
       </label>
       <input
@@ -62,24 +62,24 @@ export default function SpeakerEditor({
         onChange={(e) => setNewName(e.target.value)}
         onKeyDown={handleKeyDown}
         autoFocus
-        className="w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-400 focus:ring-0"
+        className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm text-gray-900 placeholder-gray-300 focus:outline-none focus:bg-white focus:border-gray-200 focus:ring-0 transition-all duration-150"
         placeholder="Nom du locuteur"
       />
       {error && (
-        <p className="text-xs text-red-600 mt-1">{error}</p>
+        <p className="text-xs text-red-500 mt-2">{error}</p>
       )}
-      <div className="flex gap-2 mt-2">
+      <div className="flex gap-2 mt-3">
         <button
           onClick={handleRename}
           disabled={loading}
-          className="px-3 py-1 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white text-xs rounded font-medium transition-colors"
+          className="flex-1 px-4 py-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-all duration-150"
         >
           {loading ? 'En cours...' : 'Renommer'}
         </button>
         <button
           onClick={onClose}
           disabled={loading}
-          className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-600 text-xs rounded font-medium transition-colors"
+          className="flex-1 px-4 py-2 bg-gray-50 hover:bg-gray-100 disabled:opacity-50 text-gray-600 text-xs font-medium rounded-lg transition-all duration-150"
         >
           Annuler
         </button>

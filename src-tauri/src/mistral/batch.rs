@@ -6,7 +6,8 @@ pub struct TranscriptionSegment {
     pub text: String,
     pub start: f64,
     pub end: f64,
-    pub speaker: Option<String>,
+    #[serde(alias = "speaker")]
+    pub speaker_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -37,14 +38,13 @@ pub async fn transcribe_batch(
     let mut form = multipart::Form::new()
         .text("model", "voxtral-mini-latest")
         .part("file", file_part)
-        .text("timestamp_granularities", "[\"segment\"]");
+        .text("timestamp_granularities", "segment");
 
     if diarize {
         form = form.text("diarize", "true");
     }
-    if let Some(lang) = language {
-        form = form.text("language", lang.to_string());
-    }
+    // Note: language param is incompatible with timestamp_granularities per Mistral docs.
+    // The API auto-detects language, so we omit it.
 
     let response = client
         .post("https://api.mistral.ai/v1/audio/transcriptions")
@@ -68,7 +68,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_deserialize_transcription_response() {
+    fn test_deserialize_transcription_response_with_speaker_id() {
+        // Mistral API returns speaker_id (not speaker)
         let json = r#"{
             "text": "Bonjour tout le monde. Comment allez-vous ?",
             "segments": [
@@ -76,21 +77,40 @@ mod tests {
                     "text": "Bonjour tout le monde.",
                     "start": 0.0,
                     "end": 2.5,
-                    "speaker": "Speaker 1"
+                    "speaker_id": "speaker_1"
                 },
                 {
                     "text": "Comment allez-vous ?",
                     "start": 2.5,
                     "end": 4.0,
-                    "speaker": "Speaker 2"
+                    "speaker_id": "speaker_2"
                 }
             ]
         }"#;
 
         let response: TranscriptionResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.segments.len(), 2);
-        assert_eq!(response.segments[0].speaker.as_deref(), Some("Speaker 1"));
+        assert_eq!(response.segments[0].speaker_id.as_deref(), Some("speaker_1"));
         assert_eq!(response.segments[1].text, "Comment allez-vous ?");
+    }
+
+    #[test]
+    fn test_deserialize_transcription_response_with_speaker_alias() {
+        // Also accepts "speaker" as alias for backwards compat
+        let json = r#"{
+            "text": "Hello",
+            "segments": [
+                {
+                    "text": "Hello",
+                    "start": 0.0,
+                    "end": 1.0,
+                    "speaker": "Speaker 1"
+                }
+            ]
+        }"#;
+
+        let response: TranscriptionResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.segments[0].speaker_id.as_deref(), Some("Speaker 1"));
     }
 
     #[test]

@@ -161,6 +161,12 @@ impl Database {
         Ok(())
     }
 
+    pub fn delete_session(&self, id: &str) -> Result<(), rusqlite::Error> {
+        self.conn.execute("DELETE FROM segments WHERE session_id = ?1", params![id])?;
+        self.conn.execute("DELETE FROM sessions WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     pub fn save_summary(&self, session_id: &str, summary_json: &str) -> Result<(), rusqlite::Error> {
         self.conn.execute(
             "UPDATE sessions SET summary_json = ?1 WHERE id = ?2",
