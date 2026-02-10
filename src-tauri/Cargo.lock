@@ -3061,6 +3061,8 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "cpal",
+ "dirs",
+ "futures-util",
  "hound",
  "reqwest 0.12.28",
  "rusqlite",
