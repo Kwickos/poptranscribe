@@ -339,7 +339,7 @@ pub async fn stop_session(
                 if let Ok(db) = db_clone.lock() {
                     // Remove the live streaming segments so they are replaced by
                     // higher-quality diarized ones
-                    let _ = db.clear_segments(&session_id, false);
+                    let _ = db.clear_live_segments(&session_id);
 
                     for seg in &response.segments {
                         let _ = db.save_segment(

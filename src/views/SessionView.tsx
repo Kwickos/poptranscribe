@@ -24,6 +24,9 @@ export default function SessionView() {
   const [llmSearching, setLlmSearching] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [showLlmPanel, setShowLlmPanel] = useState(false);
+  const [postProcessing, setPostProcessing] = useState(false);
+  const [postProcessResult, setPostProcessResult] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const transcriptContainerRef = useRef<HTMLDivElement>(null);
@@ -41,13 +44,27 @@ export default function SessionView() {
       setSegments((prev) => [...prev, event.payload]);
     });
 
-    const unlistenAudio = listen<{ level: number }>('audio-level', (event) => {
-      setAudioLevel(event.payload.level);
+    const unlistenAudio = listen<number>('audio-level', (event) => {
+      setAudioLevel(event.payload);
+    });
+
+    const unlistenComplete = listen<string>('session-complete', () => {
+      setPostProcessing(false);
+      setPostProcessResult({ type: 'success', message: 'Transcription et resume generes avec succes.' });
+      setTimeout(() => setPostProcessResult(null), 5000);
+    });
+
+    const unlistenError = listen<string>('session-error', (event) => {
+      setPostProcessing(false);
+      setPostProcessResult({ type: 'error', message: String(event.payload) });
+      setTimeout(() => setPostProcessResult(null), 5000);
     });
 
     return () => {
       unlistenSegment.then((fn) => fn());
       unlistenAudio.then((fn) => fn());
+      unlistenComplete.then((fn) => fn());
+      unlistenError.then((fn) => fn());
     };
   }, []);
 
@@ -72,6 +89,8 @@ export default function SessionView() {
       setShowLlmPanel(false);
     } catch (err) {
       console.error('Erreur au demarrage de la session:', err);
+      setError(String(err));
+      setTimeout(() => setError(null), 5000);
     }
   }, [mode]);
 
@@ -79,6 +98,7 @@ export default function SessionView() {
     if (sessionId) {
       try {
         await invoke('stop_session', { sessionId });
+        setPostProcessing(true);
       } catch (err) {
         console.error('Erreur a l\'arret de la session:', err);
       }
@@ -116,7 +136,37 @@ export default function SessionView() {
     : segments;
 
   return (
-    <div className="flex h-full gap-0">
+    <div className="flex flex-col h-full">
+      {/* Notification banners */}
+      {error && (
+        <div className="mb-2 px-4 py-2 bg-red-900/80 border border-red-700 text-red-200 rounded-lg text-sm flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-4 text-red-400 hover:text-red-200">&times;</button>
+        </div>
+      )}
+      {postProcessResult && (
+        <div className={`mb-2 px-4 py-2 rounded-lg text-sm flex items-center justify-between ${
+          postProcessResult.type === 'success'
+            ? 'bg-green-900/80 border border-green-700 text-green-200'
+            : 'bg-red-900/80 border border-red-700 text-red-200'
+        }`}>
+          <span>{postProcessResult.message}</span>
+          <button onClick={() => setPostProcessResult(null)} className={`ml-4 ${
+            postProcessResult.type === 'success' ? 'text-green-400 hover:text-green-200' : 'text-red-400 hover:text-red-200'
+          }`}>&times;</button>
+        </div>
+      )}
+      {postProcessing && (
+        <div className="mb-2 px-4 py-2 bg-blue-900/80 border border-blue-700 text-blue-200 rounded-lg text-sm flex items-center gap-2">
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Traitement en cours (transcription et resume)...
+        </div>
+      )}
+
+      <div className="flex flex-1 gap-0 min-h-0">
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
@@ -267,6 +317,7 @@ export default function SessionView() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

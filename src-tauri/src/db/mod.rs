@@ -70,6 +70,15 @@ impl Database {
                 INSERT INTO segments_fts(rowid, text) VALUES (new.id, new.text);
             END;
 
+            CREATE TRIGGER IF NOT EXISTS segments_ad BEFORE DELETE ON segments BEGIN
+                INSERT INTO segments_fts(segments_fts, rowid, text) VALUES('delete', old.id, old.text);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS segments_au AFTER UPDATE ON segments BEGIN
+                INSERT INTO segments_fts(segments_fts, rowid, text) VALUES('delete', old.id, old.text);
+                INSERT INTO segments_fts(rowid, text) VALUES (new.id, new.text);
+            END;
+
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -211,6 +220,14 @@ impl Database {
                 params![session_id],
             )?;
         }
+        Ok(())
+    }
+
+    pub fn clear_live_segments(&self, session_id: &str) -> Result<(), rusqlite::Error> {
+        self.conn.execute(
+            "DELETE FROM segments WHERE session_id = ?1 AND is_diarized = 0",
+            params![session_id],
+        )?;
         Ok(())
     }
 
@@ -378,6 +395,19 @@ mod tests {
         db.clear_segments(&id, false).unwrap();
         let segments = db.get_segments(&id).unwrap();
         assert_eq!(segments.len(), 0);
+    }
+
+    #[test]
+    fn test_clear_live_segments() {
+        let db = Database::new_in_memory().unwrap();
+        let id = db.create_session("Test", "visio").unwrap();
+        db.save_segment(&id, "Live seg", 0.0, 1.0, None, false).unwrap();
+        db.save_segment(&id, "Diarized seg", 1.0, 2.0, Some("S1"), true).unwrap();
+        db.clear_live_segments(&id).unwrap();
+        let segments = db.get_segments(&id).unwrap();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].text, "Diarized seg");
+        assert!(segments[0].is_diarized);
     }
 
     #[test]
