@@ -284,6 +284,16 @@ impl AudioCapturer {
         Ok(rx)
     }
 
+    // -----------------------------------------------------------------------
+    // Fallback: unsupported platform
+    // -----------------------------------------------------------------------
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn start_visio_capture(
+        &mut self,
+    ) -> Result<mpsc::Receiver<Vec<i16>>, Box<dyn std::error::Error>> {
+        Err("Visio mode (system audio capture) is not supported on this platform".into())
+    }
+
     /// Shared helper: start the microphone capture leg of Visio mode.
     /// Used by both macOS and Windows `start_visio_capture()`.
     fn start_visio_mic(
