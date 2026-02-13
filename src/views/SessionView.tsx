@@ -20,11 +20,12 @@ interface Toast {
 }
 
 interface SessionViewProps {
-  onSessionStopped: () => void;
+  onSessionStopped: (sessionId: string) => void;
   onLiveSessionChange: (id: string | null) => void;
+  onLiveTextChange: (text: string) => void;
 }
 
-export default function SessionView({ onSessionStopped, onLiveSessionChange }: SessionViewProps) {
+export default function SessionView({ onSessionStopped, onLiveSessionChange, onLiveTextChange }: SessionViewProps) {
   const [mode, setMode] = useState<'visio' | 'presentiel'>('visio');
   const [isRecording, setIsRecording] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -58,6 +59,11 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
   useEffect(() => {
     onLiveSessionChange(sessionId);
   }, [sessionId, onLiveSessionChange]);
+
+  // Notify parent when liveText changes
+  useEffect(() => {
+    onLiveTextChange(liveText);
+  }, [liveText, onLiveTextChange]);
 
   // Auto-scroll to bottom when new segments or live text arrive
   useEffect(() => {
@@ -131,6 +137,7 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
 
   const handleStop = useCallback(async () => {
     if (sessionId) {
+      const stoppedId = sessionId;
       try {
         await invoke('stop_session', { sessionId });
         processingToastId.current = addToast('Traitement en cours...', 'loading');
@@ -140,7 +147,7 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
       setIsRecording(false);
       setSessionId(null);
       setAudioLevel(0);
-      onSessionStopped();
+      onSessionStopped(stoppedId);
     }
   }, [sessionId, onSessionStopped]);
 
@@ -277,7 +284,7 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
 
       {/* Transcript */}
       <div className="flex-1 overflow-auto min-h-0 pr-2">
-        {filteredSegments.length === 0 ? (
+        {filteredSegments.length === 0 && !liveText ? (
           <div className="flex flex-col items-center justify-center h-full py-20">
             <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
               <svg className="w-7 h-7 text-gray-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -302,16 +309,35 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
                 highlight={searchQuery || undefined}
               />
             ))}
-            {liveText && (
-              <div className="flex gap-2.5 mb-3">
-                <div className="flex flex-col items-start">
-                  <div className="px-4 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-100 text-gray-400 italic rounded-2xl rounded-tl-md">
-                    {liveText}
-                    <span className="inline-block w-1.5 h-4 ml-0.5 bg-gray-300 animate-pulse rounded-sm align-text-bottom" />
-                  </div>
-                </div>
-              </div>
-            )}
+            {liveText && (() => {
+              // Split live text into completed sentences + current fragment
+              const parts = liveText.split(/(?<=[.!?…\n])\s+/);
+              const completed = parts.slice(0, -1);
+              const current = parts[parts.length - 1] || '';
+              return (
+                <>
+                  {completed.map((line, i) => (
+                    <div key={`live-${i}`} className="flex gap-2.5 mb-3">
+                      <div className="flex flex-col items-start">
+                        <div className="px-4 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-100 text-gray-400 italic rounded-2xl rounded-tl-md">
+                          {line}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {current && (
+                    <div className="flex gap-2.5 mb-3">
+                      <div className="flex flex-col items-start">
+                        <div className="px-4 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-100 text-gray-400 italic rounded-2xl rounded-tl-md">
+                          {current}
+                          <span className="inline-block w-1.5 h-4 ml-0.5 bg-gray-300 animate-pulse rounded-sm align-text-bottom" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             <div ref={transcriptEndRef} />
           </div>
         )}

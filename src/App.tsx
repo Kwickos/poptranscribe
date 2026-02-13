@@ -15,6 +15,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
 
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null);
+  const [liveText, setLiveText] = useState('');
   const [sessionListRefreshKey, setSessionListRefreshKey] = useState(0);
 
   // Listen for native menu "Parametres..." (Cmd+,)
@@ -25,16 +26,30 @@ function App() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
+  // Refresh session list when background processing completes (title + summary updated)
+  useEffect(() => {
+    const unlisten = listen('session-complete', () => {
+      setSessionListRefreshKey((prev) => prev + 1);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
   const handleSessionSelect = useCallback((id: string) => {
     setSelectedSessionId(id);
   }, []);
 
-  const handleSessionStopped = useCallback(() => {
+  const handleSessionStopped = useCallback((stoppedSessionId: string) => {
     setSessionListRefreshKey((prev) => prev + 1);
+    setActiveTab('historique');
+    setSelectedSessionId(stoppedSessionId);
   }, []);
 
   const handleLiveSessionChange = useCallback((id: string | null) => {
     setLiveSessionId(id);
+  }, []);
+
+  const handleLiveTextChange = useCallback((text: string) => {
+    setLiveText(text);
   }, []);
 
   const chatSessionId = activeTab === 'session' ? liveSessionId : selectedSessionId;
@@ -95,11 +110,13 @@ function App() {
             <SessionView
               onSessionStopped={handleSessionStopped}
               onLiveSessionChange={handleLiveSessionChange}
+              onLiveTextChange={handleLiveTextChange}
             />
           ) : selectedSessionId ? (
             <DetailView
               sessionId={selectedSessionId}
               onBack={() => setSelectedSessionId(null)}
+              onTitleChanged={() => setSessionListRefreshKey((prev) => prev + 1)}
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full">
@@ -116,7 +133,7 @@ function App() {
         </main>
 
         {/* Right: Chat panel — floating panel */}
-        <ChatPanel sessionId={chatSessionId} />
+        <ChatPanel sessionId={chatSessionId} liveText={activeTab === 'session' ? liveText : ''} />
       </div>
 
       {/* Settings modal */}

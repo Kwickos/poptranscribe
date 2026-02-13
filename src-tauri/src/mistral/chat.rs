@@ -109,6 +109,62 @@ pub async fn generate_summary(
     Ok(summary)
 }
 
+/// Generates a short, descriptive title for a meeting based on the transcript.
+pub async fn generate_title(
+    api_key: &str,
+    transcript: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::Client::new();
+
+    // Use only the first ~2000 chars to keep it fast and cheap
+    let context: &str = if transcript.len() > 2000 {
+        &transcript[..2000]
+    } else {
+        transcript
+    };
+
+    let messages = serde_json::json!([
+        {
+            "role": "system",
+            "content": "Tu generes un titre court et descriptif pour une reunion a partir de sa transcription. Le titre doit faire maximum 6 mots, sans guillemets, sans ponctuation finale. Exemples: 'Point sprint backend API', 'Revue budget Q3 marketing', 'Onboarding nouveau designer'. Reponds UNIQUEMENT avec le titre, rien d'autre."
+        },
+        {
+            "role": "user",
+            "content": context
+        }
+    ]);
+
+    let body = serde_json::json!({
+        "model": "mistral-small-latest",
+        "messages": messages,
+        "temperature": 0.3,
+        "max_tokens": 30
+    });
+
+    let response = client
+        .post("https://api.mistral.ai/v1/chat/completions")
+        .bearer_auth(api_key)
+        .json(&body)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("Mistral API error {}: {}", status, body).into());
+    }
+
+    let result: serde_json::Value = response.json().await?;
+    let title = result["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("Reunion")
+        .trim()
+        .trim_matches('"')
+        .to_string();
+
+    Ok(title)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

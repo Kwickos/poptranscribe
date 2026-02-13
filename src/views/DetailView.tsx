@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import type { SessionDetail } from '../types';
 import DiarizedTranscript from '../components/DiarizedTranscript';
 import SummaryPanel from '../components/SummaryPanel';
@@ -32,9 +33,10 @@ type DetailTab = 'transcript' | 'summary';
 interface DetailViewProps {
   sessionId: string;
   onBack: () => void;
+  onTitleChanged?: () => void;
 }
 
-export default function DetailView({ sessionId, onBack }: DetailViewProps) {
+export default function DetailView({ sessionId, onBack, onTitleChanged }: DetailViewProps) {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,19 +46,32 @@ export default function DetailView({ sessionId, onBack }: DetailViewProps) {
 
   const [activeTab, setActiveTab] = useState<DetailTab>('transcript');
 
-  useEffect(() => {
-    if (sessionId) {
-      setLoading(true);
-      setError(null);
-      invoke<SessionDetail>('get_session_detail', { sessionId })
-        .then((data) => {
-          setDetail(data);
-          setTitleDraft(data.title);
-        })
-        .catch((err) => setError(String(err)))
-        .finally(() => setLoading(false));
-    }
+  const loadDetail = useCallback(() => {
+    if (!sessionId) return;
+    setLoading(true);
+    setError(null);
+    invoke<SessionDetail>('get_session_detail', { sessionId })
+      .then((data) => {
+        setDetail(data);
+        setTitleDraft(data.title);
+      })
+      .catch((err) => setError(String(err)))
+      .finally(() => setLoading(false));
   }, [sessionId]);
+
+  useEffect(() => {
+    loadDetail();
+  }, [loadDetail]);
+
+  // Reload when background processing completes (title + summary updated)
+  useEffect(() => {
+    const unlisten = listen<string>('session-complete', (event) => {
+      if (event.payload === sessionId) {
+        loadDetail();
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, [sessionId, loadDetail]);
 
   const handleTitleSave = useCallback(async () => {
     if (!detail || !sessionId) return;
@@ -69,6 +84,7 @@ export default function DetailView({ sessionId, onBack }: DetailViewProps) {
     try {
       await invoke('update_session_title', { sessionId, title: trimmed });
       setDetail((prev) => (prev ? { ...prev, title: trimmed } : prev));
+      onTitleChanged?.();
     } catch {
       setTitleDraft(detail.title);
     }

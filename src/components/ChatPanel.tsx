@@ -10,9 +10,10 @@ interface ChatMessage {
 
 interface ChatPanelProps {
   sessionId: string | null;
+  liveText?: string;
 }
 
-export default function ChatPanel({ sessionId }: ChatPanelProps) {
+export default function ChatPanel({ sessionId, liveText }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -47,7 +48,7 @@ export default function ChatPanel({ sessionId }: ChatPanelProps) {
     setIsLoading(true);
 
     try {
-      const result = await invoke<string>('search_llm', { query, sessionId });
+      const result = await invoke<string>('search_llm', { query, sessionId, liveText: liveText || '' });
       const assistantMessage: ChatMessage = {
         id: nextIdRef.current++,
         role: 'assistant',
@@ -66,7 +67,7 @@ export default function ChatPanel({ sessionId }: ChatPanelProps) {
       setIsLoading(false);
       inputRef.current?.focus();
     }
-  }, [input, sessionId, isLoading]);
+  }, [input, sessionId, liveText, isLoading]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {

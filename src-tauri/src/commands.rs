@@ -72,189 +72,114 @@ pub async fn start_session(
     let app_clone = app.clone();
     let db_clone = Arc::clone(&state.db);
 
-    // Background task: collect audio chunks, periodically transcribe via streaming API
+    // Background task: real-time transcription via WebSocket
     tokio::spawn(async move {
-        let mut accumulated = Vec::<i16>::new();
         let sample_rate = actual_sample_rate;
-        // Transcribe every ~10 seconds of audio for near-realtime feedback
-        let chunk_interval = sample_rate as usize * 10;
-        let mut chunk_counter = 0u32;
-        // Track cumulative time offset for segment timestamps
-        let mut time_offset: f64 = 0.0;
         let stop_rx = stop_rx;
 
+        // Connect to Mistral real-time WebSocket
+        let (rt_handle, mut rt_events) = match crate::mistral::realtime::connect_realtime(
+            &api_key,
+            sample_rate,
+        )
+        .await
+        {
+            Ok(conn) => conn,
+            Err(e) => {
+                eprintln!("[session] Failed to connect realtime transcription: {}", e);
+                let _ = app_clone.emit(
+                    "session-error",
+                    format!("Erreur connexion transcription: {}", e),
+                );
+                return;
+            }
+        };
+
+        eprintln!("[session] Real-time transcription connected");
+
+        // Spawn event receiver: forwards WebSocket events to Tauri UI
+        let app_events = app_clone.clone();
+        let sid_events = session_id_clone.clone();
+        let db_events = Arc::clone(&db_clone);
+        tokio::spawn(async move {
+            while let Some(event) = rt_events.recv().await {
+                match event {
+                    crate::mistral::realtime::TranscriptionEvent::TextDelta { text } => {
+                        let _ = app_events.emit("transcription-delta", &text);
+                    }
+                    crate::mistral::realtime::TranscriptionEvent::Segment {
+                        text,
+                        start,
+                        end,
+                    } => {
+                        let segment_id = {
+                            if let Ok(db) = db_events.lock() {
+                                db.save_segment(
+                                    &sid_events, &text, start, end, None, false,
+                                )
+                                .ok()
+                            } else {
+                                None
+                            }
+                        };
+
+                        let segment = serde_json::json!({
+                            "id": segment_id.unwrap_or(0),
+                            "session_id": sid_events,
+                            "text": text,
+                            "start_time": start,
+                            "end_time": end,
+                            "speaker": null,
+                            "is_diarized": false
+                        });
+                        let _ = app_events.emit("transcription-segment", segment);
+                    }
+                    crate::mistral::realtime::TranscriptionEvent::Error { message } => {
+                        eprintln!("[session] Realtime error: {}", message);
+                        let _ = app_events.emit("session-error", &message);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        // Main audio loop: read chunks, accumulate for WAV, send to WebSocket
         loop {
-            // Check stop signal
             if *stop_rx.borrow() {
                 break;
             }
 
-            // Collect available audio chunks from the sync receiver
-            loop {
-                match receiver.try_recv() {
-                    Ok(chunk) => {
-                        if !chunk.is_empty() {
-                            // Compute RMS audio level for the UI meter
-                            let rms = (chunk.iter()
-                                .map(|&s| (s as f64).powi(2))
-                                .sum::<f64>()
-                                / chunk.len() as f64)
-                                .sqrt();
-                            let level = ((rms / i16::MAX as f64) * 100.0).min(100.0);
-                            let _ = app_clone.emit("audio-level", level as u32);
+            match receiver.try_recv() {
+                Ok(chunk) => {
+                    if !chunk.is_empty() {
+                        // Audio level for UI
+                        let rms = (chunk.iter()
+                            .map(|&s| (s as f64).powi(2))
+                            .sum::<f64>()
+                            / chunk.len() as f64)
+                            .sqrt();
+                        let level = ((rms / i16::MAX as f64) * 100.0).min(100.0);
+                        let _ = app_clone.emit("audio-level", level as u32);
 
-                            accumulated.extend_from_slice(&chunk);
-                            if let Ok(mut samples) = audio_samples_clone.lock() {
-                                samples.extend_from_slice(&chunk);
-                            }
+                        // Accumulate for WAV save
+                        if let Ok(mut samples) = audio_samples_clone.lock() {
+                            samples.extend_from_slice(&chunk);
                         }
-                    }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        // Capture has stopped
-                        return;
+
+                        // Send to WebSocket for real-time transcription
+                        rt_handle.send_audio(chunk);
                     }
                 }
-            }
-
-            // When we have enough audio, send for streaming transcription
-            if accumulated.len() >= chunk_interval {
-                let samples_to_transcribe = accumulated.clone();
-                accumulated.clear();
-                chunk_counter += 1;
-                let current_offset = time_offset;
-                time_offset += samples_to_transcribe.len() as f64 / sample_rate as f64;
-
-                let temp_path = std::env::temp_dir()
-                    .join(format!("poptranscribe_chunk_{}.wav", chunk_counter));
-
-                if crate::audio::store::save_wav(&temp_path, &samples_to_transcribe, sample_rate)
-                    .is_ok()
-                {
-                    let api_key = api_key.clone();
-                    let app = app_clone.clone();
-                    let sid = session_id_clone.clone();
-                    let db = Arc::clone(&db_clone);
-
-                    tokio::spawn(async move {
-                        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-                        let path = temp_path.clone();
-
-                        // Spawn the streaming transcription request
-                        tokio::spawn(async move {
-                            let _ = crate::mistral::realtime::transcribe_stream(
-                                &api_key, &path, Some("fr"), tx,
-                            )
-                            .await;
-                            let _ = std::fs::remove_file(&path);
-                        });
-
-                        // Process streaming events as they arrive
-                        while let Some(event) = rx.recv().await {
-                            match event {
-                                crate::mistral::realtime::TranscriptionEvent::TextDelta { text } => {
-                                    let _ = app.emit("transcription-delta", &text);
-                                }
-                                crate::mistral::realtime::TranscriptionEvent::Segment {
-                                    text,
-                                    start,
-                                    end,
-                                } => {
-                                    let abs_start = current_offset + start;
-                                    let abs_end = current_offset + end;
-
-                                    // Save live segment to DB for search
-                                    let segment_id = {
-                                        if let Ok(db) = db.lock() {
-                                            db.save_segment(
-                                                &sid, &text, abs_start, abs_end, None, false,
-                                            )
-                                            .ok()
-                                        } else {
-                                            None
-                                        }
-                                    };
-
-                                    let segment = serde_json::json!({
-                                        "id": segment_id.unwrap_or(0),
-                                        "session_id": sid,
-                                        "text": text,
-                                        "start_time": abs_start,
-                                        "end_time": abs_end,
-                                        "speaker": null,
-                                        "is_diarized": false
-                                    });
-                                    let _ = app.emit("transcription-segment", segment);
-                                }
-                                _ => {}
-                            }
-                        }
-                    });
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
                 }
-            }
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-
-        // Process any remaining accumulated audio after stop signal
-        if !accumulated.is_empty() {
-            chunk_counter += 1;
-            let current_offset = time_offset;
-            let temp_path = std::env::temp_dir()
-                .join(format!("poptranscribe_chunk_{}.wav", chunk_counter));
-
-            if crate::audio::store::save_wav(&temp_path, &accumulated, sample_rate).is_ok() {
-                let api_key_final = api_key.clone();
-                let app = app_clone.clone();
-                let sid = session_id_clone.clone();
-                let db = Arc::clone(&db_clone);
-
-                tokio::spawn(async move {
-                    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-                    let path = temp_path.clone();
-
-                    tokio::spawn(async move {
-                        let _ = crate::mistral::realtime::transcribe_stream(
-                            &api_key_final, &path, Some("fr"), tx,
-                        )
-                        .await;
-                        let _ = std::fs::remove_file(&path);
-                    });
-
-                    while let Some(event) = rx.recv().await {
-                        if let crate::mistral::realtime::TranscriptionEvent::Segment {
-                            text,
-                            start,
-                            end,
-                        } = event
-                        {
-                            let abs_start = current_offset + start;
-                            let abs_end = current_offset + end;
-
-                            let segment_id = {
-                                if let Ok(db) = db.lock() {
-                                    db.save_segment(&sid, &text, abs_start, abs_end, None, false)
-                                        .ok()
-                                } else {
-                                    None
-                                }
-                            };
-
-                            let segment = serde_json::json!({
-                                "id": segment_id.unwrap_or(0),
-                                "session_id": sid,
-                                "text": text,
-                                "start_time": abs_start,
-                                "end_time": abs_end,
-                                "speaker": null,
-                                "is_diarized": false
-                            });
-                            let _ = app.emit("transcription-segment", segment);
-                        }
-                    }
-                });
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
             }
         }
+
+        // Signal end of audio to WebSocket
+        rt_handle.end_audio();
     });
 
     // Store active session in state (wrap capturer for Send safety)
@@ -379,8 +304,25 @@ pub async fn stop_session(
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                // Generate summary
+                // Generate AI title + summary
                 if !transcript_text.is_empty() {
+                    // Title generation (fast, runs first)
+                    match crate::mistral::chat::generate_title(&api_key, &transcript_text).await
+                    {
+                        Ok(title) => {
+                            if let Ok(db) = db_clone.lock() {
+                                let _ = db.update_session_title(&session_id, &title);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[session] Erreur generation titre pour {}: {}",
+                                session_id, e
+                            );
+                        }
+                    }
+
+                    // Summary generation
                     match crate::mistral::chat::generate_summary(&api_key, &transcript_text).await
                     {
                         Ok(summary) => {
@@ -461,6 +403,7 @@ pub async fn search_text(
 pub async fn search_llm(
     query: String,
     session_id: String,
+    live_text: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let segments = {
@@ -472,7 +415,7 @@ pub async fn search_llm(
         key.clone()
     };
 
-    let transcript: String = segments
+    let mut transcript: String = segments
         .iter()
         .map(|s| {
             if let Some(ref speaker) = s.speaker {
@@ -483,6 +426,20 @@ pub async fn search_llm(
         })
         .collect::<Vec<_>>()
         .join("\n");
+
+    // Append live (in-progress) text from real-time transcription
+    if let Some(ref lt) = live_text {
+        if !lt.is_empty() {
+            if !transcript.is_empty() {
+                transcript.push('\n');
+            }
+            transcript.push_str(lt);
+        }
+    }
+
+    if transcript.is_empty() {
+        return Err("Aucune transcription disponible pour cette session.".to_string());
+    }
 
     crate::mistral::chat::search_transcript(&api_key, &transcript, &query)
         .await
