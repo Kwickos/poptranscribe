@@ -44,7 +44,7 @@ function App() {
   useEffect(() => {
     check().then((update) => {
       if (update) {
-        setUpdateAvailable({ version: update.version, body: update.body });
+        setUpdateAvailable({ version: update.version, body: update.body ?? null });
       }
     }).catch((e) => {
       console.warn('[updater] Failed to check for updates:', e);
