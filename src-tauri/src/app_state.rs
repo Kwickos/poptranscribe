@@ -4,7 +4,7 @@ use crate::db::Database;
 
 /// Wrapper that asserts `Send + Sync` for `AudioCapturer`.
 ///
-/// `cpal::Stream` (and `SCStream`) are marked `!Send` due to platform
+/// `cpal::Stream` (and `SCStream` on macOS) are marked `!Send` due to platform
 /// constraints (`PhantomData<*mut ()>`), but we only ever access the capturer
 /// through the `Mutex<Option<ActiveSession>>` in `AppState`, so cross-thread
 /// access is properly synchronised.

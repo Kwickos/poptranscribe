@@ -55,38 +55,60 @@ pub fn run() {
             commands::pick_folder,
         ])
         .setup(|app| {
-            // --- macOS application menu bar ---
+            // --- Application menu bar ---
             let about = PredefinedMenuItem::about(app, Some("A propos de PopTranscribe"), Some(
                 AboutMetadataBuilder::new()
                     .name(Some("PopTranscribe"))
-                    .version(Some("0.1.0"))
+                    .version(Some("0.2.0"))
                     .build()
             ))?;
             let settings_item = MenuItemBuilder::with_id("settings", "Parametres...")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
             let separator = PredefinedMenuItem::separator(app)?;
-            let hide = PredefinedMenuItem::hide(app, Some("Masquer PopTranscribe"))?;
-            let hide_others = PredefinedMenuItem::hide_others(app, Some("Masquer les autres"))?;
-            let show_all = PredefinedMenuItem::show_all(app, Some("Tout afficher"))?;
             let quit_menu = PredefinedMenuItem::quit(app, Some("Quitter PopTranscribe"))?;
 
+            #[cfg(target_os = "macos")]
+            let app_submenu = {
+                let hide = PredefinedMenuItem::hide(app, Some("Masquer PopTranscribe"))?;
+                let hide_others = PredefinedMenuItem::hide_others(app, Some("Masquer les autres"))?;
+                let show_all = PredefinedMenuItem::show_all(app, Some("Tout afficher"))?;
+
+                SubmenuBuilder::new(app, "PopTranscribe")
+                    .item(&about)
+                    .separator()
+                    .item(&settings_item)
+                    .item(&separator)
+                    .item(&hide)
+                    .item(&hide_others)
+                    .item(&show_all)
+                    .separator()
+                    .item(&quit_menu)
+                    .build()?
+            };
+
+            #[cfg(not(target_os = "macos"))]
             let app_submenu = SubmenuBuilder::new(app, "PopTranscribe")
                 .item(&about)
                 .separator()
                 .item(&settings_item)
                 .item(&separator)
-                .item(&hide)
-                .item(&hide_others)
-                .item(&show_all)
-                .separator()
                 .item(&quit_menu)
                 .build()?;
 
+            #[cfg(target_os = "macos")]
             let edit_submenu = SubmenuBuilder::new(app, "Edition")
                 .undo()
                 .redo()
                 .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            #[cfg(not(target_os = "macos"))]
+            let edit_submenu = SubmenuBuilder::new(app, "Edition")
                 .cut()
                 .copy()
                 .paste()

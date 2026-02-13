@@ -1,12 +1,13 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, SampleRate, StreamConfig};
+#[cfg(target_os = "macos")]
 use screencapturekit::prelude::*;
 use std::sync::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 pub enum CaptureMode {
-    Visio,     // ScreenCaptureKit (system audio) + mic
+    Visio,     // System audio + mic (ScreenCaptureKit on macOS, WASAPI loopback on Windows)
     InPerson,  // mic only
 }
 
@@ -14,7 +15,10 @@ pub struct AudioCapturer {
     mode: CaptureMode,
     device_name: Option<String>,
     stream: Option<cpal::Stream>,
+    #[cfg(target_os = "macos")]
     sc_stream: Option<SCStream>,
+    #[cfg(target_os = "windows")]
+    loopback_stream: Option<cpal::Stream>,
     capturing: Arc<AtomicBool>,
     /// The actual sample rate of the device stream. May differ from 16kHz if the
     /// device does not natively support it. Resampling can be added later.
@@ -27,7 +31,10 @@ impl AudioCapturer {
             mode,
             device_name,
             stream: None,
+            #[cfg(target_os = "macos")]
             sc_stream: None,
+            #[cfg(target_os = "windows")]
+            loopback_stream: None,
             capturing: Arc::new(AtomicBool::new(false)),
             actual_sample_rate: 16000,
         }
@@ -48,10 +55,17 @@ impl AudioCapturer {
     /// Stop capturing audio.
     pub fn stop(&mut self) {
         self.capturing.store(false, Ordering::SeqCst);
-        // Stop ScreenCaptureKit stream if present (Visio mode).
+        // Stop ScreenCaptureKit stream if present (macOS Visio mode).
+        #[cfg(target_os = "macos")]
         if let Some(sc_stream) = self.sc_stream.take() {
             let _ = sc_stream.stop_capture();
             drop(sc_stream);
+        }
+        // Stop WASAPI loopback stream if present (Windows Visio mode).
+        #[cfg(target_os = "windows")]
+        if let Some(loopback) = self.loopback_stream.take() {
+            let _ = loopback.pause();
+            drop(loopback);
         }
         // Dropping the cpal stream stops it. We take it out of the Option so it gets dropped.
         if let Some(stream) = self.stream.take() {
@@ -86,12 +100,10 @@ impl AudioCapturer {
             .ok_or_else(|| "No default input device available".into())
     }
 
-    /// Internal: start Visio mode capture (system audio via ScreenCaptureKit + mic via cpal).
-    ///
-    /// Both audio sources send `Vec<i16>` chunks into the same channel. The system
-    /// audio is captured via ScreenCaptureKit at 16kHz mono, and the microphone via
-    /// cpal (reusing the InPerson logic). Both sources push interleaved chunks into
-    /// the single sender; no sample-level mixing is done here.
+    // -----------------------------------------------------------------------
+    // macOS Visio capture: ScreenCaptureKit (system audio) + cpal mic
+    // -----------------------------------------------------------------------
+    #[cfg(target_os = "macos")]
     fn start_visio_capture(
         &mut self,
     ) -> Result<mpsc::Receiver<Vec<i16>>, Box<dyn std::error::Error>> {
@@ -171,7 +183,113 @@ impl AudioCapturer {
         self.sc_stream = Some(sc_stream);
 
         // --- 2. Set up cpal microphone capture (same logic as InPerson) ---
+        self.start_visio_mic(tx)?;
 
+        eprintln!("[capture] Visio mode fully started (system audio 16kHz + mic resampled to 16kHz)");
+
+        Ok(rx)
+    }
+
+    // -----------------------------------------------------------------------
+    // Windows Visio capture: WASAPI loopback (system audio) + cpal mic
+    // -----------------------------------------------------------------------
+    #[cfg(target_os = "windows")]
+    fn start_visio_capture(
+        &mut self,
+    ) -> Result<mpsc::Receiver<Vec<i16>>, Box<dyn std::error::Error>> {
+        let (tx, rx) = mpsc::channel::<Vec<i16>>();
+
+        // --- 1. Set up WASAPI loopback for system audio capture ---
+        // cpal 0.15 on Windows: calling build_input_stream() on an output device
+        // automatically activates AUDCLNT_STREAMFLAGS_LOOPBACK.
+
+        let host = cpal::default_host();
+        let output_device = host
+            .default_output_device()
+            .ok_or("No default output device available for loopback capture")?;
+
+        let output_name = output_device.name().unwrap_or_else(|_| "unknown".to_string());
+        eprintln!("[capture] WASAPI loopback using output device: {}", output_name);
+
+        let default_output_config = output_device.default_output_config()?;
+        let loopback_format = default_output_config.sample_format();
+        let loopback_config: StreamConfig = default_output_config.into();
+        let loopback_rate = loopback_config.sample_rate.0;
+        let loopback_channels = loopback_config.channels as usize;
+
+        eprintln!(
+            "[capture] Loopback config: {} Hz, {} ch, format: {:?}",
+            loopback_rate, loopback_channels, loopback_format
+        );
+
+        let capturing_for_loopback = Arc::clone(&self.capturing);
+        let tx_loopback = tx.clone();
+
+        let loopback_err = |err: cpal::StreamError| {
+            eprintln!("[capture] Loopback stream error: {}", err);
+        };
+
+        let loopback_stream = match loopback_format {
+            SampleFormat::F32 => {
+                let capturing = capturing_for_loopback.clone();
+                output_device.build_input_stream(
+                    &loopback_config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        if !capturing.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        let i16_data: Vec<i16> = data.iter().map(|&s| f32_to_i16(s)).collect();
+                        let mono = downmix_to_mono_i16(&i16_data, loopback_channels);
+                        let resampled = resample_simple(&mono, loopback_rate, 16000);
+                        let _ = tx_loopback.send(resampled);
+                    },
+                    loopback_err,
+                    None,
+                )?
+            }
+            SampleFormat::I16 => {
+                let capturing = capturing_for_loopback.clone();
+                output_device.build_input_stream(
+                    &loopback_config,
+                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                        if !capturing.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        let mono = downmix_to_mono_i16(data, loopback_channels);
+                        let resampled = resample_simple(&mono, loopback_rate, 16000);
+                        let _ = tx_loopback.send(resampled);
+                    },
+                    loopback_err,
+                    None,
+                )?
+            }
+            _ => {
+                return Err(format!(
+                    "Unsupported loopback sample format: {:?}",
+                    loopback_format
+                ).into());
+            }
+        };
+
+        loopback_stream.play()?;
+        self.loopback_stream = Some(loopback_stream);
+
+        eprintln!("[capture] WASAPI loopback capture started ({} Hz -> 16kHz mono)", loopback_rate);
+
+        // --- 2. Set up cpal microphone capture ---
+        self.start_visio_mic(tx)?;
+
+        eprintln!("[capture] Visio mode fully started (WASAPI loopback + mic resampled to 16kHz)");
+
+        Ok(rx)
+    }
+
+    /// Shared helper: start the microphone capture leg of Visio mode.
+    /// Used by both macOS and Windows `start_visio_capture()`.
+    fn start_visio_mic(
+        &mut self,
+        tx: mpsc::Sender<Vec<i16>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let host = cpal::default_host();
         let device = self.resolve_input_device(&host)?;
 
@@ -185,7 +303,13 @@ impl AudioCapturer {
             stream_config.sample_rate.0, stream_config.channels, sample_format
         );
 
-        self.actual_sample_rate = stream_config.sample_rate.0;
+        let mic_rate = stream_config.sample_rate.0;
+        self.actual_sample_rate = 16000; // both sources normalised to 16kHz
+
+        eprintln!(
+            "[capture] Visio mic at {} Hz, will resample to 16kHz",
+            mic_rate
+        );
 
         let capturing_for_mic = Arc::clone(&self.capturing);
         let tx_mic = tx;
@@ -206,7 +330,8 @@ impl AudioCapturer {
                             return;
                         }
                         let mono = downmix_to_mono_i16(data, channels);
-                        let _ = tx_mic.send(mono);
+                        let resampled = resample_simple(&mono, mic_rate, 16000);
+                        let _ = tx_mic.send(resampled);
                     },
                     err_callback,
                     None,
@@ -222,7 +347,8 @@ impl AudioCapturer {
                         }
                         let i16_data: Vec<i16> = data.iter().map(|&s| f32_to_i16(s)).collect();
                         let mono = downmix_to_mono_i16(&i16_data, channels);
-                        let _ = tx_mic.send(mono);
+                        let resampled = resample_simple(&mono, mic_rate, 16000);
+                        let _ = tx_mic.send(resampled);
                     },
                     err_callback,
                     None,
@@ -241,7 +367,8 @@ impl AudioCapturer {
                             .map(|&s| (s as i32 - 32768) as i16)
                             .collect();
                         let mono = downmix_to_mono_i16(&i16_data, channels);
-                        let _ = tx_mic.send(mono);
+                        let resampled = resample_simple(&mono, mic_rate, 16000);
+                        let _ = tx_mic.send(resampled);
                     },
                     err_callback,
                     None,
@@ -260,9 +387,7 @@ impl AudioCapturer {
         self.capturing.store(true, Ordering::SeqCst);
         self.stream = Some(cpal_stream);
 
-        eprintln!("[capture] Visio mode fully started (system audio + mic)");
-
-        Ok(rx)
+        Ok(())
     }
 
     /// Internal: start microphone-only capture (InPerson mode).
@@ -453,4 +578,26 @@ fn downmix_to_mono_i16(data: &[i16], channels: usize) -> Vec<i16> {
 fn f32_to_i16(sample: f32) -> i16 {
     let clamped = sample.clamp(-1.0, 1.0);
     (clamped * i16::MAX as f32) as i16
+}
+
+/// Fast linear-interpolation resampler for use inside audio callbacks.
+fn resample_simple(samples: &[i16], from_rate: u32, to_rate: u32) -> Vec<i16> {
+    if from_rate == to_rate || samples.is_empty() {
+        return samples.to_vec();
+    }
+    let ratio = from_rate as f64 / to_rate as f64;
+    let out_len = (samples.len() as f64 / ratio).ceil() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src_pos = i as f64 * ratio;
+        let idx = src_pos as usize;
+        let frac = src_pos - idx as f64;
+        let s = if idx + 1 < samples.len() {
+            samples[idx] as f64 * (1.0 - frac) + samples[idx + 1] as f64 * frac
+        } else {
+            samples[idx.min(samples.len() - 1)] as f64
+        };
+        out.push(s.round() as i16);
+    }
+    out
 }
