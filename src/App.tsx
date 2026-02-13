@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import SessionList from './components/SessionList';
 import SessionView from './views/SessionView';
 import DetailView from './views/DetailView';
@@ -18,6 +20,10 @@ function App() {
   const [liveText, setLiveText] = useState('');
   const [sessionListRefreshKey, setSessionListRefreshKey] = useState(0);
 
+  // Auto-update
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body: string | null } | null>(null);
+  const [updating, setUpdating] = useState(false);
+
   // Listen for native menu "Parametres..." (Cmd+,)
   useEffect(() => {
     const unlisten = listen('open-settings', () => {
@@ -32,6 +38,31 @@ function App() {
       setSessionListRefreshKey((prev) => prev + 1);
     });
     return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Check for updates on startup
+  useEffect(() => {
+    check().then((update) => {
+      if (update) {
+        setUpdateAvailable({ version: update.version, body: update.body });
+      }
+    }).catch((e) => {
+      console.warn('[updater] Failed to check for updates:', e);
+    });
+  }, []);
+
+  const handleUpdate = useCallback(async () => {
+    setUpdating(true);
+    try {
+      const update = await check();
+      if (update) {
+        await update.downloadAndInstall();
+        await relaunch();
+      }
+    } catch (e) {
+      console.error('[updater] Update failed:', e);
+      setUpdating(false);
+    }
   }, []);
 
   const handleSessionSelect = useCallback((id: string) => {
@@ -139,6 +170,33 @@ function App() {
       {/* Settings modal */}
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Update banner */}
+      {updateAvailable && (
+        <div className="fixed bottom-4 right-4 bg-white rounded-xl shadow-lg border border-gray-200 p-4 max-w-xs z-50">
+          <p className="text-sm font-medium text-gray-900 mb-1">
+            Mise a jour {updateAvailable.version}
+          </p>
+          <p className="text-xs text-gray-500 mb-3">
+            Une nouvelle version est disponible.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setUpdateAvailable(null)}
+              className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Plus tard
+            </button>
+            <button
+              onClick={handleUpdate}
+              disabled={updating}
+              className="px-3 py-1.5 text-xs bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              {updating ? 'Mise a jour...' : 'Installer'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -25,6 +25,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -36,6 +37,14 @@
     "macOS": {
       "entitlements": "./Entitlements.plist",
       "minimumSystemVersion": "13.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMyNEY0NkQyRUREODY3RUIKUldUclo5anQwa1pQd21DZGd6bEZKMTlPM2FTcVlEV3E5aGExamlIUVByNnovU1JQd1JVLzNFbHcK",
+      "endpoints": [
+        "https://github.com/Kwickos/poptranscribe/releases/latest/download/latest.json"
+      ]
     }
   }
 }
