@@ -12,6 +12,7 @@ pub enum CaptureMode {
 
 pub struct AudioCapturer {
     mode: CaptureMode,
+    device_name: Option<String>,
     stream: Option<cpal::Stream>,
     sc_stream: Option<SCStream>,
     capturing: Arc<AtomicBool>,
@@ -21,9 +22,10 @@ pub struct AudioCapturer {
 }
 
 impl AudioCapturer {
-    pub fn new(mode: CaptureMode) -> Self {
+    pub fn new(mode: CaptureMode, device_name: Option<String>) -> Self {
         Self {
             mode,
+            device_name,
             stream: None,
             sc_stream: None,
             capturing: Arc::new(AtomicBool::new(false)),
@@ -62,6 +64,26 @@ impl AudioCapturer {
     /// Check if currently capturing.
     pub fn is_capturing(&self) -> bool {
         self.capturing.load(Ordering::SeqCst)
+    }
+
+    /// Resolve the input device: use the configured device name if set,
+    /// otherwise fall back to the system default.
+    fn resolve_input_device(&self, host: &cpal::Host) -> Result<cpal::Device, Box<dyn std::error::Error>> {
+        if let Some(ref name) = self.device_name {
+            if let Ok(devices) = host.input_devices() {
+                for device in devices {
+                    if let Ok(dev_name) = device.name() {
+                        if dev_name == *name {
+                            eprintln!("[capture] Using configured input device: {}", dev_name);
+                            return Ok(device);
+                        }
+                    }
+                }
+            }
+            eprintln!("[capture] Configured device '{}' not found, falling back to default", name);
+        }
+        host.default_input_device()
+            .ok_or_else(|| "No default input device available".into())
     }
 
     /// Internal: start Visio mode capture (system audio via ScreenCaptureKit + mic via cpal).
@@ -151,9 +173,7 @@ impl AudioCapturer {
         // --- 2. Set up cpal microphone capture (same logic as InPerson) ---
 
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or("No default input device available")?;
+        let device = self.resolve_input_device(&host)?;
 
         let device_name = device.name().unwrap_or_else(|_| "unknown".to_string());
         eprintln!("[capture] Visio mic using input device: {}", device_name);
@@ -250,9 +270,7 @@ impl AudioCapturer {
         &mut self,
     ) -> Result<mpsc::Receiver<Vec<i16>>, Box<dyn std::error::Error>> {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or("No default input device available")?;
+        let device = self.resolve_input_device(&host)?;
 
         let device_name = device.name().unwrap_or_else(|_| "unknown".to_string());
         eprintln!("[capture] Using input device: {}", device_name);

@@ -92,6 +92,153 @@ pub fn export_markdown(
     md
 }
 
+/// Generates a PDF document from session data and saves it to the given path.
+pub fn export_pdf(
+    title: &str,
+    date: &str,
+    duration_secs: Option<f64>,
+    segments: &[Segment],
+    summary: &Option<Summary>,
+    output_path: &std::path::Path,
+) -> Result<(), String> {
+    use genpdf::Element as _;
+
+    let font_family = load_macos_fonts()?;
+
+    let mut doc = genpdf::Document::new(font_family);
+    doc.set_title(title);
+    doc.set_minimal_conformance();
+
+    let mut decorator = genpdf::SimplePageDecorator::new();
+    decorator.set_margins(genpdf::Margins::all(25));
+    doc.set_page_decorator(decorator);
+    doc.set_font_size(10);
+
+    // Title
+    doc.push(genpdf::elements::Paragraph::new(title)
+        .styled(genpdf::style::Style::new().bold().with_font_size(18)));
+    doc.push(genpdf::elements::Break::new(1.5_f32));
+
+    // Metadata
+    doc.push(genpdf::elements::Paragraph::new(format!("Date : {}", date))
+        .styled(genpdf::style::Style::new().with_font_size(10)
+            .with_color(genpdf::style::Color::Rgb(100, 100, 100))));
+    if let Some(dur) = duration_secs {
+        doc.push(genpdf::elements::Paragraph::new(format!("Duree : {}", format_duration(dur)))
+            .styled(genpdf::style::Style::new().with_font_size(10)
+                .with_color(genpdf::style::Color::Rgb(100, 100, 100))));
+    }
+    doc.push(genpdf::elements::Break::new(2.0_f32));
+
+    // Transcription header
+    doc.push(genpdf::elements::Paragraph::new("Transcription")
+        .styled(genpdf::style::Style::new().bold().with_font_size(14)));
+    doc.push(genpdf::elements::Break::new(1.0_f32));
+
+    // Segments
+    for segment in segments {
+        let ts = format_timestamp(segment.start_time);
+        let mut para = genpdf::elements::Paragraph::default();
+        para.push(genpdf::style::StyledString::new(
+            format!("{} ", ts),
+            genpdf::style::Style::new().with_font_size(9)
+                .with_color(genpdf::style::Color::Rgb(120, 120, 120)),
+        ));
+        if let Some(ref speaker) = segment.speaker {
+            para.push(genpdf::style::StyledString::new(
+                format!("{} : ", speaker),
+                genpdf::style::Style::new().bold().with_font_size(10),
+            ));
+        }
+        para.push(genpdf::style::StyledString::new(
+            segment.text.clone(),
+            genpdf::style::Style::new().with_font_size(10),
+        ));
+        doc.push(para);
+    }
+
+    // Summary
+    if let Some(ref summary) = summary {
+        doc.push(genpdf::elements::Break::new(2.0_f32));
+        doc.push(genpdf::elements::Paragraph::new("Resume")
+            .styled(genpdf::style::Style::new().bold().with_font_size(14)));
+        doc.push(genpdf::elements::Break::new(1.0_f32));
+
+        if !summary.key_points.is_empty() {
+            doc.push(genpdf::elements::Paragraph::new("Points cles")
+                .styled(genpdf::style::Style::new().bold().with_font_size(12)));
+            let mut list = genpdf::elements::UnorderedList::new();
+            for point in &summary.key_points {
+                list.push(genpdf::elements::Paragraph::new(point.clone()));
+            }
+            doc.push(list);
+        }
+
+        if !summary.decisions.is_empty() {
+            doc.push(genpdf::elements::Break::new(1.0_f32));
+            doc.push(genpdf::elements::Paragraph::new("Decisions")
+                .styled(genpdf::style::Style::new().bold().with_font_size(12)));
+            let mut list = genpdf::elements::UnorderedList::new();
+            for decision in &summary.decisions {
+                list.push(genpdf::elements::Paragraph::new(decision.clone()));
+            }
+            doc.push(list);
+        }
+
+        if !summary.action_items.is_empty() {
+            doc.push(genpdf::elements::Break::new(1.0_f32));
+            doc.push(genpdf::elements::Paragraph::new("Actions a suivre")
+                .styled(genpdf::style::Style::new().bold().with_font_size(12)));
+            let mut list = genpdf::elements::UnorderedList::new();
+            for item in &summary.action_items {
+                let text = if let Some(ref assignee) = item.assignee {
+                    format!("{} (Assignee : {})", item.description, assignee)
+                } else {
+                    item.description.clone()
+                };
+                list.push(genpdf::elements::Paragraph::new(text));
+            }
+            doc.push(list);
+        }
+    }
+
+    // Create parent directory
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Erreur creation dossier: {}", e))?;
+    }
+
+    doc.render_to_file(output_path)
+        .map_err(|e| format!("Erreur generation PDF: {}", e))?;
+
+    Ok(())
+}
+
+/// Load Arial font family from macOS system fonts.
+fn load_macos_fonts() -> Result<genpdf::fonts::FontFamily<genpdf::fonts::FontData>, String> {
+    let font_dir = std::path::Path::new("/System/Library/Fonts/Supplemental");
+
+    let load = |filename: &str| -> Result<genpdf::fonts::FontData, String> {
+        let path = font_dir.join(filename);
+        let data = std::fs::read(&path)
+            .map_err(|e| format!("Police '{}' introuvable: {}", path.display(), e))?;
+        genpdf::fonts::FontData::new(data, None)
+            .map_err(|e| format!("Erreur lecture police '{}': {}", filename, e))
+    };
+
+    let regular = load("Arial.ttf")?;
+    let bold = load("Arial Bold.ttf")?;
+    let italic = load("Arial Italic.ttf")?;
+    let bold_italic = load("Arial Bold Italic.ttf")?;
+
+    Ok(genpdf::fonts::FontFamily {
+        regular,
+        bold,
+        italic,
+        bold_italic,
+    })
+}
+
 /// Writes content to a file at the given path.
 pub fn export_to_file(content: &str, path: &std::path::Path) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {

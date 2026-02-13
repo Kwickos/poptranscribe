@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use cpal::traits::{DeviceTrait, HostTrait};
 use tauri::{Emitter, State};
 use crate::app_state::{ActiveSession, AppState, SendCapturer};
 use crate::audio::capture::{AudioCapturer, CaptureMode};
@@ -46,13 +47,19 @@ pub async fn start_session(
         return Err("Cle API Mistral non configuree. Allez dans Parametres.".to_string());
     }
 
+    // Read configured input device from settings
+    let device_name = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        db.get_setting("input_device").ok().flatten()
+    };
+
     // Start audio capture
     let capture_mode = match mode.as_str() {
         "visio" => CaptureMode::Visio,
         _ => CaptureMode::InPerson,
     };
 
-    let mut capturer = AudioCapturer::new(capture_mode);
+    let mut capturer = AudioCapturer::new(capture_mode, device_name);
     let receiver = capturer.start().map_err(|e| e.to_string())?;
     let actual_sample_rate = capturer.actual_sample_rate;
 
@@ -527,11 +534,17 @@ pub async fn export_session(
                 &summary,
             );
 
-            // Save to file in Documents/poptranscribe/exports/
-            let export_dir = dirs::document_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("poptranscribe")
-                .join("exports");
+            // Use configured export directory, or default to ~/Documents/poptranscribe/exports/
+            let export_dir = {
+                let db = state.db.lock().map_err(|e| e.to_string())?;
+                match db.get_setting("export_dir").ok().flatten() {
+                    Some(dir) if !dir.is_empty() => std::path::PathBuf::from(dir),
+                    _ => dirs::document_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("poptranscribe")
+                        .join("exports"),
+                }
+            };
 
             // Sanitize title for filename
             let safe_title: String = session
@@ -544,6 +557,48 @@ pub async fn export_session(
 
             crate::export::export_to_file(&md, &file_path)
                 .map_err(|e| format!("Erreur ecriture fichier: {}", e))?;
+
+            Ok(file_path.to_string_lossy().to_string())
+        }
+        "pdf" => {
+            let (session, segments, summary) = {
+                let db = state.db.lock().map_err(|e| e.to_string())?;
+                let session = db.get_session(&session_id).map_err(|e| e.to_string())?;
+                let segments = db.get_segments(&session_id).map_err(|e| e.to_string())?;
+                let summary: Option<Summary> = session
+                    .summary_json
+                    .as_ref()
+                    .and_then(|json| serde_json::from_str(json).ok());
+                (session, segments, summary)
+            };
+
+            let export_dir = {
+                let db = state.db.lock().map_err(|e| e.to_string())?;
+                match db.get_setting("export_dir").ok().flatten() {
+                    Some(dir) if !dir.is_empty() => std::path::PathBuf::from(dir),
+                    _ => dirs::document_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("poptranscribe")
+                        .join("exports"),
+                }
+            };
+
+            let safe_title: String = session
+                .title
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+                .collect();
+            let filename = format!("{}_{}.pdf", safe_title, session_id.split('-').next().unwrap_or("export"));
+            let file_path = export_dir.join(&filename);
+
+            crate::export::export_pdf(
+                &session.title,
+                &session.created_at,
+                session.duration_secs,
+                &segments,
+                &summary,
+                &file_path,
+            )?;
 
             Ok(file_path.to_string_lossy().to_string())
         }
@@ -584,4 +639,60 @@ pub async fn set_api_key(key: String, state: State<'_, AppState>) -> Result<(), 
     *api_key = key.clone();
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.set_setting("api_key", &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_setting(key: String, state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_setting(&key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_setting(key: String, value: String, state: State<'_, AppState>) -> Result<(), String> {
+    // If the key is "api_key", also update the in-memory cache
+    if key == "api_key" {
+        let mut api_key = state.api_key.lock().map_err(|e| e.to_string())?;
+        *api_key = value.clone();
+    }
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.set_setting(&key, &value).map_err(|e| e.to_string())
+}
+
+// ── Audio devices ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AudioDevice {
+    pub name: String,
+    pub is_default: bool,
+}
+
+#[tauri::command]
+pub async fn list_input_devices() -> Result<Vec<AudioDevice>, String> {
+    let host = cpal::default_host();
+    let default_name = host
+        .default_input_device()
+        .and_then(|d| d.name().ok());
+
+    let devices = host
+        .input_devices()
+        .map_err(|e| format!("Impossible de lister les peripheriques audio: {}", e))?;
+
+    let mut result = Vec::new();
+    for device in devices {
+        if let Ok(name) = device.name() {
+            let is_default = default_name.as_deref() == Some(&name);
+            result.push(AudioDevice { name, is_default });
+        }
+    }
+    Ok(result)
+}
+
+// ── Folder picker ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let folder = app.dialog().file()
+        .blocking_pick_folder();
+    Ok(folder.map(|p| p.to_string()))
 }

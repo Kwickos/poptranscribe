@@ -1,15 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Segment } from '../types';
 import TranscriptLine from '../components/TranscriptLine';
-import AudioLevel from '../components/AudioLevel';
 
 function formatElapsedTime(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+const INLINE_BARS = 16;
+
+interface Toast {
+  id: number;
+  message: string;
+  type: 'success' | 'error' | 'loading';
 }
 
 interface SessionViewProps {
@@ -25,12 +32,27 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
   const [elapsedTime, setElapsedTime] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [audioLevel, setAudioLevel] = useState(0);
-  const [postProcessing, setPostProcessing] = useState(false);
-  const [postProcessResult, setPostProcessResult] = useState<{type: 'success' | 'error', message: string} | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const [liveText, setLiveText] = useState('');
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const barSeeds = useMemo(() => Array.from({ length: INLINE_BARS }, () => Math.random()), []);
+  const processingToastId = useRef<number | null>(null);
+
+  function addToast(message: string, type: 'success' | 'error' | 'loading') {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    if (type !== 'loading') {
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4000);
+    }
+    return id;
+  }
+
+  function removeToast(id: number) {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }
 
   // Notify parent when sessionId changes
   useEffect(() => {
@@ -60,15 +82,19 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
     });
 
     const unlistenComplete = listen<string>('session-complete', () => {
-      setPostProcessing(false);
-      setPostProcessResult({ type: 'success', message: 'Transcription et resume generes avec succes.' });
-      setTimeout(() => setPostProcessResult(null), 5000);
+      if (processingToastId.current !== null) {
+        removeToast(processingToastId.current);
+        processingToastId.current = null;
+      }
+      addToast('Transcription et resume generes avec succes.', 'success');
     });
 
     const unlistenError = listen<string>('session-error', (event) => {
-      setPostProcessing(false);
-      setPostProcessResult({ type: 'error', message: String(event.payload) });
-      setTimeout(() => setPostProcessResult(null), 5000);
+      if (processingToastId.current !== null) {
+        removeToast(processingToastId.current);
+        processingToastId.current = null;
+      }
+      addToast(String(event.payload), 'error');
     });
 
     return () => {
@@ -99,8 +125,7 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
       setSearchQuery('');
     } catch (err) {
       console.error('Erreur au demarrage de la session:', err);
-      setError(String(err));
-      setTimeout(() => setError(null), 5000);
+      addToast(String(err), 'error');
     }
   }, [mode]);
 
@@ -108,7 +133,7 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
     if (sessionId) {
       try {
         await invoke('stop_session', { sessionId });
-        setPostProcessing(true);
+        processingToastId.current = addToast('Traitement en cours...', 'loading');
       } catch (err) {
         console.error('Erreur a l\'arret de la session:', err);
       }
@@ -119,159 +144,138 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
     }
   }, [sessionId, onSessionStopped]);
 
-  // Filter segments based on text search
   const filteredSegments = searchQuery
     ? segments.filter((s) => s.text.toLowerCase().includes(searchQuery.toLowerCase()))
     : segments;
 
   return (
     <div className="flex flex-col h-full p-6">
-      {/* Notification banners — floating pills */}
-      <div className="space-y-2 mb-3">
-        {error && (
-          <div className="animate-fade-in-down inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-full text-xs">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="text-red-300 hover:text-red-500 transition-colors">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {postProcessResult && (
-          <div className={`animate-fade-in-down inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs ${
-            postProcessResult.type === 'success'
-              ? 'bg-emerald-50 text-emerald-600'
-              : 'bg-red-50 text-red-600'
-          }`}>
-            <span>{postProcessResult.message}</span>
-            <button onClick={() => setPostProcessResult(null)} className="opacity-50 hover:opacity-100 transition-opacity">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {postProcessing && (
-          <div className="animate-fade-in-down inline-flex items-center gap-2 px-4 py-2 bg-white/80 text-gray-500 rounded-full text-xs shadow-sm">
-            <svg className="w-3.5 h-3.5 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            Traitement en cours...
-          </div>
-        )}
-      </div>
-
-      {/* Controls — inline, no card wrapper */}
-      <div className="flex flex-wrap items-center gap-3 mb-5 shrink-0">
-        {/* Mode toggle */}
-        <div className="flex bg-white/80 rounded-full p-0.5 shadow-sm">
-          <button
-            onClick={() => setMode('visio')}
-            disabled={isRecording}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${
-              mode === 'visio'
-                ? 'bg-gray-900 text-white'
-                : 'text-gray-400 hover:text-gray-600'
-            } ${isRecording ? 'cursor-not-allowed' : ''}`}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-            </svg>
-            Visio
-          </button>
-          <button
-            onClick={() => setMode('presentiel')}
-            disabled={isRecording}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${
-              mode === 'presentiel'
-                ? 'bg-gray-900 text-white'
-                : 'text-gray-400 hover:text-gray-600'
-            } ${isRecording ? 'cursor-not-allowed' : ''}`}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
-            </svg>
-            Presentiel
-          </button>
-        </div>
-
-        {/* Start/Stop button */}
-        {!isRecording ? (
-          <button
-            onClick={handleStart}
-            className="flex items-center gap-2 px-5 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-full text-xs font-medium transition-all duration-150"
-          >
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="6" />
-            </svg>
-            Demarrer
-          </button>
-        ) : (
-          <button
-            onClick={handleStop}
-            className="flex items-center gap-2 px-5 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs font-medium transition-all duration-150"
-          >
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-              <rect x="7" y="7" width="10" height="10" rx="1.5" />
-            </svg>
-            Arreter
-          </button>
-        )}
-
-        {/* Recording indicator + Timer + Audio level */}
-        {isRecording && (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
+      {/* Header — single metadata line */}
+      <div className="shrink-0 mb-5">
+        <div className="flex flex-wrap items-center gap-2">
+          {isRecording ? (
+            <>
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
               </span>
-              <span className="font-mono text-sm text-gray-900 tabular-nums">
+              <span className="font-mono text-xs text-gray-900 tabular-nums">
                 {formatElapsedTime(elapsedTime)}
               </span>
-            </div>
-            <AudioLevel level={audioLevel} isActive={isRecording} />
-          </div>
-        )}
+              <span className="text-gray-200">&middot;</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/80 text-gray-400 shadow-sm capitalize">
+                {mode}
+              </span>
+              <span className="text-gray-200">&middot;</span>
+              {/* Inline audio waveform */}
+              <div className="flex items-center gap-[2px] h-3.5">
+                {barSeeds.map((seed, i) => {
+                  const center = INLINE_BARS / 2;
+                  const dist = Math.abs(i - center) / center;
+                  const level = Math.max(0, audioLevel * (1 - dist * 0.4) + seed * 0.08);
+                  const h = Math.max(0.12, Math.min(1, level));
+                  return (
+                    <div
+                      key={i}
+                      className="w-[1.5px] rounded-full bg-gray-400 transition-all duration-150 ease-out"
+                      style={{ height: `${h * 100}%`, opacity: 0.4 + h * 0.6 }}
+                    />
+                  );
+                })}
+              </div>
+            </>
+          ) : elapsedTime > 0 ? (
+            <>
+              <span className="font-mono text-xs text-gray-300 tabular-nums">
+                {formatElapsedTime(elapsedTime)}
+              </span>
+              <span className="text-gray-200">&middot;</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/80 text-gray-400 shadow-sm capitalize">
+                {mode}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-gray-400">En attente</span>
+              <span className="text-gray-200">&middot;</span>
+              <div className="flex bg-white/80 rounded-full p-0.5 shadow-sm">
+                <button
+                  onClick={() => setMode('visio')}
+                  className={`px-3.5 py-1 text-xs font-medium rounded-full transition-all duration-150 ${
+                    mode === 'visio'
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  Visio
+                </button>
+                <button
+                  onClick={() => setMode('presentiel')}
+                  className={`px-3.5 py-1 text-xs font-medium rounded-full transition-all duration-150 ${
+                    mode === 'presentiel'
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  Presentiel
+                </button>
+              </div>
+            </>
+          )}
 
-        {!isRecording && elapsedTime > 0 && (
-          <span className="font-mono text-sm text-gray-300 tabular-nums">
-            {formatElapsedTime(elapsedTime)}
-          </span>
-        )}
+          {/* Right side — search + action */}
+          <div className="ml-auto flex items-center gap-2">
+            {segments.length > 0 && (
+              <div className="relative">
+                <svg
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Rechercher..."
+                  className="w-44 bg-white/80 rounded-full py-1.5 pl-9 pr-3 text-xs text-gray-900 placeholder-gray-300 focus:outline-none focus:bg-white focus:ring-1 focus:ring-gray-200 shadow-sm transition-all duration-150"
+                />
+              </div>
+            )}
 
-        {/* Search — floating pill */}
-        {segments.length > 0 && (
-          <div className="relative ml-auto">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher..."
-              className="w-48 bg-white/80 rounded-full py-1.5 pl-9 pr-3 text-xs text-gray-900 placeholder-gray-300 focus:outline-none focus:bg-white focus:ring-1 focus:ring-gray-200 shadow-sm transition-all duration-150"
-            />
+            {isRecording ? (
+              <button
+                onClick={handleStop}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs font-medium transition-all duration-150"
+              >
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+                Arreter
+              </button>
+            ) : (
+              <button
+                onClick={handleStart}
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-full text-xs font-medium transition-all duration-150"
+              >
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="6" />
+                </svg>
+                Demarrer
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Transcript area with chat bubbles */}
+      {/* Transcript */}
       <div className="flex-1 overflow-auto min-h-0 pr-2">
         {filteredSegments.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-20">
@@ -312,6 +316,40 @@ export default function SessionView({ onSessionStopped, onLiveSessionChange }: S
           </div>
         )}
       </div>
+
+      {/* Toast notifications — same style as ExportButtons */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2.5">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`animate-fade-in-up flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-medium shadow-lg border ${
+                toast.type === 'success'
+                  ? 'bg-white border-emerald-100 text-emerald-700'
+                  : toast.type === 'error'
+                    ? 'bg-white border-red-100 text-red-700'
+                    : 'bg-white border-gray-100 text-gray-500'
+              }`}
+            >
+              {toast.type === 'success' ? (
+                <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+              ) : toast.type === 'error' ? (
+                <svg className="w-4 h-4 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 text-gray-400 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              )}
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

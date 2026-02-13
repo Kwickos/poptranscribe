@@ -34,6 +34,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::start_session,
@@ -48,6 +49,10 @@ pub fn run() {
             commands::delete_session,
             commands::get_api_key,
             commands::set_api_key,
+            commands::get_setting,
+            commands::set_setting,
+            commands::list_input_devices,
+            commands::pick_folder,
         ])
         .setup(|app| {
             // --- macOS application menu bar ---
