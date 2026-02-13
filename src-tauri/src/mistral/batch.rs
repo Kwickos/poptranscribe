@@ -21,7 +21,7 @@ pub async fn transcribe_batch(
     api_key: &str,
     audio_path: &std::path::Path,
     diarize: bool,
-    language: Option<&str>,
+    _language: Option<&str>,
 ) -> Result<TranscriptionResponse, Box<dyn std::error::Error + Send + Sync>> {
     let client = reqwest::Client::new();
     let file_bytes = tokio::fs::read(audio_path).await?;
